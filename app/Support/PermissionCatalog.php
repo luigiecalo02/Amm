@@ -46,6 +46,10 @@ final class PermissionCatalog
             ['name' => 'Editar organización', 'slug' => 'organization.update', 'module' => 'organization', 'description' => 'Actualizar el club'],
 
             ['name' => 'Ver reportes', 'slug' => 'reports.view', 'module' => 'reports', 'description' => 'Consultar vencimientos y reportes'],
+
+            ['name' => 'Ver inscripciones', 'slug' => 'inscriptions.view', 'module' => 'inscriptions', 'description' => 'Ver enlaces e inscripciones por documento'],
+            ['name' => 'Crear enlaces de inscripción', 'slug' => 'inscriptions.create', 'module' => 'inscriptions', 'description' => 'Generar enlaces públicos de inscripción'],
+            ['name' => 'Verificar inscripciones', 'slug' => 'inscriptions.verify', 'module' => 'inscriptions', 'description' => 'Verificar documentos y otorgar acceso'],
         ];
     }
 
@@ -60,6 +64,14 @@ final class PermissionCatalog
     /**
      * @return array<int, string>
      */
+    /**
+     * @return array<int, string>
+     */
+    public static function superAdminDefaults(): array
+    {
+        return self::slugs();
+    }
+
     public static function directorDefaults(): array
     {
         return self::slugs();

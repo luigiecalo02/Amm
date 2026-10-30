@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureMemberProfile;
 use App\Http\Middleware\EnsureOrganizationMembership;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -27,6 +28,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'organization' => EnsureOrganizationMembership::class,
             'permission' => EnsurePermission::class,
             'current.organization' => SetCurrentOrganization::class,
+            'member.profile' => EnsureMemberProfile::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

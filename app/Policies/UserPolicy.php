@@ -19,13 +19,15 @@ class UserPolicy
 
     public function update(User $user, User $model, Organization $organization): bool
     {
-        return $model->belongsToOrganization($organization)
+        return ! $model->isSuperAdmin()
+            && $model->belongsToOrganization($organization)
             && $user->hasPermission('users.update', $organization);
     }
 
     public function delete(User $user, User $model, Organization $organization): bool
     {
-        return $model->belongsToOrganization($organization)
+        return ! $model->isSuperAdmin()
+            && $model->belongsToOrganization($organization)
             && $user->hasPermission('users.delete', $organization);
     }
 }

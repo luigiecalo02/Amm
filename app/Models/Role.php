@@ -14,6 +14,8 @@ class Role extends Model
     use HasFactory;
     use HasUlids;
 
+    public const CLUB_SUPER_ADMIN_SLUG = 'superadministrador';
+
     protected $fillable = [
         'organization_id',
         'name',
@@ -43,5 +45,10 @@ class Role extends Model
     public function scopeForOrganization(Builder $query, string $organizationId): Builder
     {
         return $query->where('organization_id', $organizationId);
+    }
+
+    public function isClubSuperAdmin(): bool
+    {
+        return $this->slug === self::CLUB_SUPER_ADMIN_SLUG;
     }
 }

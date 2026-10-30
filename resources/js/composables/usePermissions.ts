@@ -5,7 +5,12 @@ export function usePermissions() {
     const page = usePage<PageProps>();
 
     const can = (permission: string): boolean => {
-        const permissions = page.props.permissions ?? [];
+        const permissions = page.props.permissions;
+
+        if (!Array.isArray(permissions)) {
+            return false;
+        }
+
         return permissions.includes('*') || permissions.includes(permission);
     };
 

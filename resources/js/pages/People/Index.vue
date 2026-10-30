@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Link, usePage, router } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
-import type { PageProps } from '@/types';
+import { useOrganization } from '@/composables/useOrganization';
+import { usePermissions } from '@/composables/usePermissions';
 
 const props = defineProps<{
     people: { data: any[] };
     filters: { q?: string };
 }>();
 
-const page = usePage<PageProps>();
+const { clubPath } = useOrganization();
+const { can } = usePermissions();
 const q = ref(props.filters.q ?? '');
-const slug = () => page.props.organization?.slug;
 
 const search = () => {
-    router.get(`/app/${slug()}/people`, { q: q.value }, { preserveState: true, replace: true });
+    router.get(clubPath('people'), { q: q.value }, { preserveState: true, replace: true });
 };
 </script>
 
@@ -25,7 +26,7 @@ const search = () => {
                 <p class="text-xs uppercase tracking-widest text-ember-400">Personas</p>
                 <h1 class="font-display text-3xl">Miembros y conductores</h1>
             </div>
-            <Link :href="`/app/${slug()}/people/create`" class="btn-primary">Nueva inscripción</Link>
+            <Link v-if="can('people.create')" :href="clubPath('people/create')" class="btn-primary">Nueva inscripción</Link>
         </div>
 
         <form class="mt-4" @submit.prevent="search">
@@ -36,7 +37,7 @@ const search = () => {
             <Link
                 v-for="person in people.data"
                 :key="person.id"
-                :href="`/app/${slug()}/people/${person.id}`"
+                :href="clubPath(`people/${person.id}`)"
                 class="panel p-4"
             >
                 <p class="font-display text-xl">{{ person.first_name }} {{ person.last_name }}</p>

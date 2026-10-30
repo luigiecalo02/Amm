@@ -75,6 +75,21 @@ class DocumentService
         return $document->refresh()->load(['type', 'files']);
     }
 
+    /**
+     * @param  list<UploadedFile>  $files
+     */
+    public function replaceFiles(Document $document, array $files): void
+    {
+        foreach ($document->files as $file) {
+            Storage::disk($file->disk)->delete($file->path);
+            $file->delete();
+        }
+
+        foreach ($files as $file) {
+            $this->storeFile($document, $file);
+        }
+    }
+
     public function storeFile(Document $document, UploadedFile $file): DocumentFile
     {
         $disk = (string) config('filesystems.default', 'documents');

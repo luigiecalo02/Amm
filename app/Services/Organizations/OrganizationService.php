@@ -36,16 +36,18 @@ class OrganizationService
 
             $this->permissions->createOrganizationRoles($organization);
 
-            $director = Role::query()
-                ->where('organization_id', $organization->id)
-                ->where('slug', 'director')
-                ->firstOrFail();
+            if (! $owner->isSuperAdmin()) {
+                $director = Role::query()
+                    ->where('organization_id', $organization->id)
+                    ->where('slug', 'director')
+                    ->firstOrFail();
 
-            $this->permissions->assignRole($organization, $owner, $director);
+                $this->permissions->assignRole($organization, $owner, $director);
 
-            $owner->forceFill([
-                'current_organization_id' => $organization->id,
-            ])->save();
+                $owner->forceFill([
+                    'current_organization_id' => $organization->id,
+                ])->save();
+            }
 
             return $organization;
         });

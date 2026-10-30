@@ -12,6 +12,29 @@ class StorePersonRequest extends FormRequest
         return $this->user()?->can('create', [Person::class, $this->route('organization')]) ?? false;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'birth_date' => $this->blankToNull('birth_date'),
+            'email' => $this->blankToNull('email'),
+            'metadata' => [
+                ...($this->input('metadata') ?? []),
+                'baptized' => filter_var($this->input('metadata.baptized'), FILTER_VALIDATE_BOOLEAN),
+                'baptized_at' => $this->blankToNull('metadata.baptized_at'),
+            ],
+            'health' => [
+                ...($this->input('health') ?? []),
+                'weight_kg' => $this->blankToNull('health.weight_kg'),
+                'height_cm' => $this->blankToNull('health.height_cm'),
+            ],
+            'motorcycle' => [
+                ...($this->input('motorcycle') ?? []),
+                'engine_displacement' => $this->blankToNull('motorcycle.engine_displacement'),
+                'plate' => $this->blankToNull('motorcycle.plate'),
+            ],
+        ]);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -19,7 +42,7 @@ class StorePersonRequest extends FormRequest
     {
         return [
             'document_type' => ['required', 'string', 'max:20'],
-            'document_number' => ['required', 'string', 'max:40'],
+            'document_number' => ['required', 'string', 'max:40', 'unique:people,document_number'],
             'document_issued_in' => ['nullable', 'string', 'max:80'],
             'first_name' => ['required', 'string', 'max:80'],
             'middle_name' => ['nullable', 'string', 'max:80'],
@@ -45,6 +68,7 @@ class StorePersonRequest extends FormRequest
             'metadata.church_district' => ['nullable', 'string', 'max:80'],
             'metadata.church_role' => ['nullable', 'string', 'max:80'],
             'metadata.baptized' => ['nullable', 'boolean'],
+            'metadata.baptized_at' => ['nullable', 'date'],
             'health' => ['nullable', 'array'],
             'health.eps' => ['nullable', 'string', 'max:80'],
             'health.blood_type' => ['nullable', 'string', 'max:8'],
@@ -59,6 +83,19 @@ class StorePersonRequest extends FormRequest
             'emergency_contact.phone' => ['nullable', 'string', 'max:30'],
             'emergency_contact.address' => ['nullable', 'string', 'max:180'],
             'emergency_contact.relationship' => ['nullable', 'string', 'max:40'],
+            'motorcycle' => ['nullable', 'array'],
+            'motorcycle.vehicle_type' => ['nullable', 'in:motorcycle,car'],
+            'motorcycle.brand' => ['nullable', 'string', 'max:80'],
+            'motorcycle.model' => ['nullable', 'string', 'max:80'],
+            'motorcycle.engine_displacement' => ['nullable', 'integer', 'min:50', 'max:3000'],
+            'motorcycle.plate' => ['nullable', 'string', 'max:20'],
         ];
+    }
+
+    private function blankToNull(string $key): mixed
+    {
+        $value = $this->input($key);
+
+        return $value === '' || $value === null ? null : $value;
     }
 }

@@ -21,15 +21,14 @@ class OrganizationController extends Controller
     {
         $user = $request->user();
 
-        $organizations = $user->isPlatformAdmin()
-            ? Organization::query()->orderBy('name')->get()
-            : Organization::query()
-                ->whereIn('id', $user->organizationRoles()->select('organization_id'))
-                ->orderBy('name')
-                ->get();
+        $organizations = $user->accessibleOrganizations()
+            ->withCount('members')
+            ->orderBy('name')
+            ->get();
 
         return Inertia::render('Organizations/Index', [
             'organizations' => $organizations,
+            'canCreate' => $user->can('create', Organization::class),
         ]);
     }
 
@@ -44,10 +43,11 @@ class OrganizationController extends Controller
 
     public function edit(Organization $organization): Response
     {
-        $this->authorize('update', $organization);
+        $this->authorize('view', $organization);
 
         return Inertia::render('Organizations/Settings', [
             'club' => $organization,
+            'canUpdate' => request()->user()?->can('update', $organization) ?? false,
         ]);
     }
 

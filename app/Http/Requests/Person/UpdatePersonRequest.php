@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Person;
 
+use App\Models\Person;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdatePersonRequest extends FormRequest
 {
@@ -16,6 +18,16 @@ class UpdatePersonRequest extends FormRequest
      */
     public function rules(): array
     {
-        return (new StorePersonRequest)->rules();
+        $rules = (new StorePersonRequest)->rules();
+        $person = $this->route('person');
+
+        $rules['document_number'] = [
+            'required',
+            'string',
+            'max:40',
+            Rule::unique('people', 'document_number')->ignore($person instanceof Person ? $person->id : null),
+        ];
+
+        return $rules;
     }
 }

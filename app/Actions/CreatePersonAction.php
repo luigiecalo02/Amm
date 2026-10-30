@@ -37,7 +37,8 @@ class CreatePersonAction
                     'city',
                     'department',
                 ])->all(),
-                'status' => PersonStatus::Active,
+                'photo' => $data['photo'] ?? null,
+                'status' => $data['status'] ?? PersonStatus::Active,
             ]);
 
             if (! empty($data['health'])) {
@@ -55,11 +56,25 @@ class CreatePersonAction
                 'organization_id' => $organization->id,
                 'membership_number' => $data['membership_number'] ?? null,
                 'joined_at' => $data['joined_at'] ?? now()->toDateString(),
-                'status' => MembershipStatus::Active,
+                'status' => $data['membership_status'] ?? MembershipStatus::Active,
                 'vehicle_role' => $data['vehicle_role'] ?? 'driver',
                 'notes' => $data['notes'] ?? null,
                 'metadata' => $data['metadata'] ?? [],
             ]);
+
+            if (! empty($data['motorcycle']['plate'])) {
+                $motorcycle = $data['motorcycle'];
+                $person->motorcycles()->create([
+                    'plate' => $motorcycle['plate'],
+                    'brand' => $motorcycle['brand'] ?? 'Sin marca',
+                    'model' => $motorcycle['line'] ?? $motorcycle['model'] ?? null,
+                    'year' => $motorcycle['year'] ?? null,
+                    'color' => $motorcycle['color'] ?? null,
+                    'engine_displacement' => $motorcycle['engine_displacement'] ?? null,
+                    'vehicle_type' => $motorcycle['vehicle_type'] ?? 'motorcycle',
+                    'status' => 'active',
+                ]);
+            }
 
             PersonCreated::dispatch($person, $organization, $actor);
             MemberAdded::dispatch($member, $organization, $actor);

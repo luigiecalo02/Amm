@@ -7,5 +7,5 @@ interface OcrProviderInterface
     /**
      * @return array{raw_text: string|null, extracted_data: array<string, mixed>, confidence: float|null, provider: string, model: string|null}
      */
-    public function extract(string $absolutePath, string $documentTypeSlug): array;
+    public function extract(string $absolutePath, string $documentTypeSlug, ?string $hintText = null): array;
 }

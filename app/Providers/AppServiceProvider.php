@@ -20,7 +20,7 @@ use App\Policies\PersonPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\UserPolicy;
 use App\Services\Documents\DocumentValidationService;
-use App\Services\OCR\NullOcrProvider;
+use App\Services\OCR\HeuristicOcrProvider;
 use App\Services\OCR\OcrProviderInterface;
 use App\Services\Permissions\PermissionService;
 use App\Support\OrganizationContext;
@@ -40,7 +40,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(OrganizationContext::class);
         $this->app->singleton(PermissionService::class);
         $this->app->singleton(DocumentValidationService::class);
-        $this->app->bind(OcrProviderInterface::class, NullOcrProvider::class);
+        $this->app->bind(OcrProviderInterface::class, HeuristicOcrProvider::class);
     }
 
     public function boot(): void
@@ -61,7 +61,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(\App\Models\User::class, UserPolicy::class);
 
         Gate::before(function ($user, string $ability) {
-            if (method_exists($user, 'isPlatformAdmin') && $user->isPlatformAdmin()) {
+            if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
                 return true;
             }
 
@@ -78,6 +78,14 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('login', function (Request $request) {
             return Limit::perMinute(5)->by($request->ip());
+        });
+
+        RateLimiter::for('inscription-upload', function (Request $request) {
+            return Limit::perMinute(30)->by($request->ip().'|'.$request->route('token'));
+        });
+
+        RateLimiter::for('inscription-store', function (Request $request) {
+            return Limit::perMinute(8)->by($request->ip().'|'.$request->route('token'));
         });
 
         $this->registerTenantBindings();

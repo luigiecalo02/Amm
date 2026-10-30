@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Support\OrganizationContext;
 use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -24,6 +25,8 @@ class User extends Authenticatable
         'person_id',
         'name',
         'email',
+        'google_id',
+        'avatar',
         'password',
         'is_platform_admin',
         'current_organization_id',
@@ -58,17 +61,18 @@ class User extends Authenticatable
         return $this->hasMany(OrganizationUserRole::class);
     }
 
-    public function isPlatformAdmin(): bool
+    public function isSuperAdmin(): bool
     {
         return (bool) $this->is_platform_admin;
     }
 
+    public function isPlatformAdmin(): bool
+    {
+        return $this->isSuperAdmin();
+    }
+
     public function belongsToOrganization(Organization|string $organization): bool
     {
-        if ($this->isPlatformAdmin()) {
-            return true;
-        }
-
         $organizationId = $organization instanceof Organization ? $organization->id : $organization;
 
         return $this->organizationRoles()
@@ -76,9 +80,14 @@ class User extends Authenticatable
             ->exists();
     }
 
+    public function canAccessOrganization(Organization|string $organization): bool
+    {
+        return $this->isSuperAdmin() || $this->belongsToOrganization($organization);
+    }
+
     public function hasPermission(string $permission, Organization|string|null $organization = null): bool
     {
-        if ($this->isPlatformAdmin()) {
+        if ($this->isSuperAdmin()) {
             return true;
         }
 
@@ -99,7 +108,7 @@ class User extends Authenticatable
      */
     public function permissionSlugs(?Organization $organization = null): array
     {
-        if ($this->isPlatformAdmin()) {
+        if ($this->isSuperAdmin()) {
             return ['*'];
         }
 
@@ -119,11 +128,37 @@ class User extends Authenticatable
             ->all();
     }
 
-    public function organizations()
+    public function roleIn(Organization $organization): ?Role
     {
-        return Organization::query()
-            ->whereIn('id', $this->organizationRoles()->select('organization_id'))
-            ->orWhere(fn ($query) => $this->isPlatformAdmin() ? $query->whereRaw('1 = 1') : $query->whereRaw('1 = 0'));
+        return $this->organizationRoles()
+            ->where('organization_id', $organization->id)
+            ->with('role')
+            ->first()
+            ?->role;
+    }
+
+    public function accessibleOrganizations(): Builder
+    {
+        if ($this->isSuperAdmin()) {
+            return Organization::query();
+        }
+
+        return Organization::query()->whereIn(
+            'id',
+            $this->organizationRoles()->select('organization_id')
+        );
+    }
+
+    public function canSwitchClubs(): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        return $this->organizationRoles()
+            ->select('organization_id')
+            ->distinct()
+            ->count() > 1;
     }
 
     private function resolveOrganizationId(Organization|string|null $organization): ?string

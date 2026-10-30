@@ -2,28 +2,28 @@
 import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { usePermissions } from '@/composables/usePermissions';
+import { useOrganization } from '@/composables/useOrganization';
 import type { PageProps } from '@/types';
 
 const page = usePage<PageProps>();
 const { can } = usePermissions();
-
-const organization = computed(() => page.props.organization);
+const { organization, slug } = useOrganization();
 const flash = computed(() => page.props.flash);
 
 const items = computed(() => {
-    const slug = organization.value?.slug;
-    if (!slug) return [];
+    if (!slug.value) return [];
 
     return [
-        { href: `/app/${slug}`, label: 'Club', show: true },
-        { href: `/app/${slug}/people`, label: 'Personas', show: can('people.view') },
-        { href: `/app/${slug}/members`, label: 'Miembros', show: can('members.view') },
-        { href: `/app/${slug}/motorcycles`, label: 'Motos', show: can('motorcycles.view') },
-        { href: `/app/${slug}/documents`, label: 'Documentos', show: can('documents.view') },
-        { href: `/app/${slug}/documents/expiring`, label: 'Vencimientos', show: can('reports.view') },
-        { href: `/app/${slug}/users`, label: 'Usuarios', show: can('users.view') },
-        { href: `/app/${slug}/roles`, label: 'Roles', show: can('roles.view') },
-        { href: `/app/${slug}/settings`, label: 'Club', show: can('organization.view'), key: 'settings' },
+        { href: `/app/${slug.value}`, label: 'Club', show: true },
+        { href: `/app/${slug.value}/people`, label: 'Personas', show: can('people.view') },
+        { href: `/app/${slug.value}/members`, label: 'Miembros', show: can('members.view') },
+        { href: `/app/${slug.value}/motorcycles`, label: 'Motos', show: can('motorcycles.view') },
+        { href: `/app/${slug.value}/documents`, label: 'Documentos', show: can('documents.view') },
+        { href: `/app/${slug.value}/documents/expiring`, label: 'Vencimientos', show: can('reports.view') },
+        { href: `/app/${slug.value}/inscripciones`, label: 'Inscripciones', show: can('inscriptions.view') },
+        { href: `/app/${slug.value}/users`, label: 'Usuarios', show: can('users.view') },
+        { href: `/app/${slug.value}/roles`, label: 'Roles', show: can('roles.view') },
+        { href: `/app/${slug.value}/settings`, label: 'Ajustes', show: can('organization.view'), key: 'settings' },
     ].filter((item) => item.show);
 });
 </script>
@@ -33,11 +33,13 @@ const items = computed(() => {
         <header class="sticky top-0 z-20 border-b border-white/10 bg-ink-900/80 backdrop-blur">
             <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
                 <div>
-                    <p class="font-display text-xs uppercase tracking-[0.25em] text-ember-400">AMM</p>
+                    <p class="font-display text-xs uppercase tracking-[0.25em] text-ember-400">
+                        {{ page.props.current_role?.name ?? 'AMM' }}
+                    </p>
                     <h1 class="font-display text-lg leading-none">{{ organization?.name ?? 'Plataforma' }}</h1>
                 </div>
                 <div class="flex items-center gap-3 text-sm">
-                    <Link href="/organizations" class="text-cream/60 hover:text-cream">Clubes</Link>
+                    <Link v-if="page.props.can_switch_clubs" href="/organizations" class="text-cream/60 hover:text-cream">Clubes</Link>
                     <form method="post" action="/logout">
                         <input type="hidden" name="_token" :value="page.props.csrf_token || ''" />
                     </form>

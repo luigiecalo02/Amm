@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\CreatePersonAction;
+use App\Actions\UpdatePersonAction;
 use App\Http\Requests\Person\StorePersonRequest;
 use App\Http\Requests\Person\UpdatePersonRequest;
 use App\Models\Organization;
@@ -84,24 +85,11 @@ class PersonController extends Controller
         ]);
     }
 
-    public function update(UpdatePersonRequest $request, Organization $organization, Person $person): RedirectResponse
+    public function update(UpdatePersonRequest $request, Organization $organization, Person $person, UpdatePersonAction $action): RedirectResponse
     {
         $this->authorize('update', [$person, $organization]);
 
-        $data = $request->validated();
-        $person->fill(collect($data)->except(['health', 'emergency_contact'])->all());
-        $person->save();
-
-        if (isset($data['health'])) {
-            $person->healthProfile()->updateOrCreate(['person_id' => $person->id], $data['health']);
-        }
-
-        if (! empty($data['emergency_contact']['name'])) {
-            $person->emergencyContacts()->updateOrCreate(
-                ['person_id' => $person->id, 'is_primary' => true],
-                $data['emergency_contact']
-            );
-        }
+        $action->execute($person, $organization, $request->validated());
 
         return redirect()
             ->route('people.show', [$organization, $person])

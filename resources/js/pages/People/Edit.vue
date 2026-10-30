@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useForm, usePage } from '@inertiajs/vue3';
-import type { PageProps } from '@/types';
+import { useForm } from '@inertiajs/vue3';
+import { useOrganization } from '@/composables/useOrganization';
 
 const props = defineProps<{ person: any }>();
-const page = usePage<PageProps>();
+const { clubPath } = useOrganization();
 
 const form = useForm({
     document_type: props.person.document_type,
@@ -20,7 +20,7 @@ const form = useForm({
     emergency_contact: props.person.emergency_contacts?.[0] || {},
 });
 
-const submit = () => form.put(`/app/${page.props.organization?.slug}/people/${props.person.id}`);
+const submit = () => form.put(clubPath(`people/${props.person.id}`));
 </script>
 
 <template>

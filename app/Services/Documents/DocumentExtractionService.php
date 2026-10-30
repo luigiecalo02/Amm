@@ -14,16 +14,16 @@ class DocumentExtractionService
     {
     }
 
-    public function process(DocumentScan $scan): DocumentExtraction
+    public function process(DocumentScan $scan, ?string $hintText = null): DocumentExtraction
     {
         $scan->forceFill([
             'status' => DocumentScanStatus::Processing,
             'started_at' => now(),
-            'provider' => config('services.ocr.provider', 'null'),
+            'provider' => config('services.ocr.provider', 'heuristic'),
         ])->save();
 
         $absolutePath = Storage::disk('scans')->path($scan->original_file);
-        $result = $this->ocr->extract($absolutePath, $scan->documentType?->slug ?? 'unknown');
+        $result = $this->ocr->extract($absolutePath, $scan->documentType?->slug ?? 'unknown', $hintText);
 
         $extraction = $scan->extraction()->updateOrCreate(
             ['document_scan_id' => $scan->id],

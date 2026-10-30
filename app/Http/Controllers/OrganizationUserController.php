@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\AssignOrganizationRoleAction;
 use App\Http\Requests\User\StoreOrganizationUserRequest;
+use App\Http\Requests\User\UpdateOrganizationUserRequest;
 use App\Models\Organization;
 use App\Models\Role;
 use App\Models\User;
@@ -19,6 +20,7 @@ class OrganizationUserController extends Controller
         $this->authorize('viewAny', [User::class, $organization]);
 
         $users = User::query()
+            ->where('is_platform_admin', false)
             ->whereHas('organizationRoles', fn ($query) => $query->where('organization_id', $organization->id))
             ->with(['organizationRoles' => fn ($query) => $query->where('organization_id', $organization->id)->with('role')])
             ->orderBy('name')
@@ -54,5 +56,26 @@ class OrganizationUserController extends Controller
         $assign->execute($organization, $user, $role, $request->user());
 
         return back()->with('success', 'Usuario agregado al club.');
+    }
+
+    public function update(
+        UpdateOrganizationUserRequest $request,
+        Organization $organization,
+        User $user,
+        AssignOrganizationRoleAction $assign,
+    ): RedirectResponse {
+        abort_unless(
+            $user->organizationRoles()->where('organization_id', $organization->id)->exists(),
+            404
+        );
+
+        $role = Role::query()
+            ->forOrganization($organization->id)
+            ->whereKey($request->validated('role_id'))
+            ->firstOrFail();
+
+        $assign->execute($organization, $user, $role, $request->user());
+
+        return back()->with('success', 'Rol del usuario actualizado.');
     }
 }

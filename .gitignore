@@ -5,7 +5,9 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/framework/testing
 /vendor
+/database/database.sqlite
 .env
 .env.backup
 .env.production
@@ -23,3 +25,4 @@ yarn-error.log
 /.zed
 Thumbs.db
 .DS_Store
+/.tools

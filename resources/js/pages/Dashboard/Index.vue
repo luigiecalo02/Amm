@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Link, usePage } from '@inertiajs/vue3';
-import type { PageProps } from '@/types';
+import { Link } from '@inertiajs/vue3';
+import { useOrganization } from '@/composables/useOrganization';
+import { usePermissions } from '@/composables/usePermissions';
 
 defineProps<{
     stats: { members: number; people: number; motorcycles: number; expiring: number };
@@ -9,7 +10,8 @@ defineProps<{
     recentMembers: any[];
 }>();
 
-const page = usePage<PageProps>();
+const { clubPath } = useOrganization();
+const { can } = usePermissions();
 </script>
 
 <template>
@@ -30,7 +32,7 @@ const page = usePage<PageProps>();
             <div class="panel p-5">
                 <div class="mb-4 flex items-center justify-between">
                     <h2 class="font-display text-xl">Vencimientos</h2>
-                    <Link :href="`/app/${page.props.organization?.slug}/documents/expiring`" class="text-sm text-ember-400">Ver todos</Link>
+                    <Link v-if="can('reports.view')" :href="clubPath('documents/expiring')" class="text-sm text-ember-400">Ver todos</Link>
                 </div>
                 <div v-if="!expiringDocuments.length" class="text-sm text-cream/50">No hay documentos por vencer en 30 días.</div>
                 <ul class="space-y-3">
@@ -46,7 +48,7 @@ const page = usePage<PageProps>();
             <div class="panel p-5">
                 <div class="mb-4 flex items-center justify-between">
                     <h2 class="font-display text-xl">Últimos miembros</h2>
-                    <Link :href="`/app/${page.props.organization?.slug}/people/create`" class="btn-primary">Inscribir</Link>
+                    <Link v-if="can('people.create')" :href="clubPath('people/create')" class="btn-primary">Inscribir</Link>
                 </div>
                 <ul class="space-y-3">
                     <li v-for="member in recentMembers" :key="member.id" class="rounded-xl bg-ink-900/70 px-3 py-2">

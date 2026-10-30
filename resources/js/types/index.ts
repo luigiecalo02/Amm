@@ -36,9 +36,17 @@ export interface Paginated<T> {
     last_page: number;
 }
 
+export interface CurrentRole {
+    name: string;
+    scope: 'platform' | 'organization';
+}
+
 export interface PageProps {
     auth: { user: AuthUser | null };
     organization: OrganizationSummary | null;
+    current_role?: CurrentRole | null;
+    can_switch_clubs?: boolean;
     permissions: PermissionSlug[];
-    flash: { success?: string | null; error?: string | null };
+    googleEnabled?: boolean;
+    flash: { success?: string | null; error?: string | null; analyzed?: string | null };
 }

@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Organizations\OrganizationService;
+use App\Services\Permissions\PermissionService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -17,14 +18,16 @@ class DemoClubSeeder extends Seeder
 {
     public function run(OrganizationService $organizations, CreatePersonAction $createPerson): void
     {
-        $director = User::query()->updateOrCreate(
+        $superAdmin = User::query()->updateOrCreate(
             ['email' => 'director@amm.test'],
             [
-                'name' => 'Director AMM',
+                'name' => 'Superadministrador AMM',
                 'password' => Hash::make('password'),
                 'is_platform_admin' => true,
             ]
         );
+
+        $superAdmin->organizationRoles()->delete();
 
         $organization = Organization::query()->where('slug', 'amm-cartagena')->first()
             ?? $organizations->create([
@@ -38,7 +41,7 @@ class DemoClubSeeder extends Seeder
                 'department' => 'Bolívar',
                 'city' => 'Cartagena',
                 'address' => 'Cartagena, Colombia',
-            ], $director);
+            ], $superAdmin);
 
         $person = \App\Models\Person::query()->where('document_number', '1047475332')->first();
 
@@ -125,11 +128,45 @@ class DemoClubSeeder extends Seeder
             ['status' => DocumentStatus::Valid, 'expiration_date' => now()->addYear()]
         );
 
+        $clubDirector = User::query()->updateOrCreate(
+            ['email' => 'cartagena@amm.test'],
+            [
+                'name' => 'Director Cartagena',
+                'password' => Hash::make('password'),
+                'is_platform_admin' => false,
+                'current_organization_id' => $organization->id,
+            ]
+        );
+
+        app(PermissionService::class)->createOrganizationRoles($organization);
+
+        Organization::query()->each(
+            fn (Organization $club) => app(PermissionService::class)->createOrganizationRoles($club)
+        );
+
+        $superRole = Role::query()
+            ->where('organization_id', $organization->id)
+            ->where('slug', Role::CLUB_SUPER_ADMIN_SLUG)
+            ->first();
+
+        if ($superRole) {
+            $organization->userRoles()
+                ->where('user_id', $clubDirector->id)
+                ->where('role_id', '!=', $superRole->id)
+                ->delete();
+
+            $organization->userRoles()->firstOrCreate([
+                'user_id' => $clubDirector->id,
+                'role_id' => $superRole->id,
+            ]);
+        }
+
         $memberUser = User::query()->updateOrCreate(
             ['email' => 'luis@amm.test'],
             [
                 'name' => 'Luis Fernando Romero',
                 'password' => Hash::make('password'),
+                'is_platform_admin' => false,
                 'person_id' => $person->id,
                 'current_organization_id' => $organization->id,
             ]

@@ -31,6 +31,12 @@ class PermissionService
     public function createOrganizationRoles(Organization $organization): void
     {
         $defaults = [
+            [
+                'name' => 'Superadministrador',
+                'slug' => Role::CLUB_SUPER_ADMIN_SLUG,
+                'description' => 'Tiene todos los permisos del club',
+                'permissions' => PermissionCatalog::superAdminDefaults(),
+            ],
             ['name' => 'Director', 'slug' => 'director', 'permissions' => PermissionCatalog::directorDefaults()],
             ['name' => 'Subdirector', 'slug' => 'subdirector', 'permissions' => PermissionCatalog::directorDefaults()],
             ['name' => 'Secretario', 'slug' => 'secretario', 'permissions' => PermissionCatalog::secretaryDefaults()],
@@ -48,7 +54,7 @@ class PermissionService
                 ],
                 [
                     'name' => $definition['name'],
-                    'description' => 'Rol inicial del club',
+                    'description' => $definition['description'] ?? 'Rol inicial del club',
                     'is_system' => true,
                 ]
             );
@@ -91,6 +97,15 @@ class PermissionService
 
     public function assignRole(Organization $organization, User $user, Role $role): void
     {
+        if ($user->isSuperAdmin()) {
+            return;
+        }
+
+        $organization->userRoles()
+            ->where('user_id', $user->id)
+            ->where('role_id', '!=', $role->id)
+            ->delete();
+
         $organization->userRoles()->firstOrCreate([
             'user_id' => $user->id,
             'role_id' => $role->id,

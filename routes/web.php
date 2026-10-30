@@ -1,22 +1,37 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\GoogleAuthController;
+use App\Http\Controllers\Auth\MemberRegistrationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\MemberController;
 use App\Http\Controllers\MotorcycleController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationUserController;
+use App\Http\Controllers\InscriptionController;
 use App\Http\Controllers\PersonController;
+use App\Http\Controllers\PublicInscriptionController;
 use App\Http\Controllers\RoleController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    if (auth()->check()) {
+    $user = auth()->user();
+
+    if (! $user) {
+        return redirect()->route('login');
+    }
+
+    if ($user->isSuperAdmin()) {
         return redirect()->route('organizations.index');
     }
 
-    return redirect()->route('login');
+    $organization = $user->currentOrganization
+        ?? $user->organizationRoles()->with('organization')->first()?->organization;
+
+    return $organization
+        ? redirect()->route('dashboard', $organization)
+        : redirect()->route('organizations.index');
 });
 
 Route::middleware('guest')->group(function (): void {
@@ -24,11 +39,37 @@ Route::middleware('guest')->group(function (): void {
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])->middleware('throttle:10,1');
 });
 
+Route::prefix('/i/{token}')->group(function (): void {
+    Route::get('/', [PublicInscriptionController::class, 'show'])->name('public.inscription.show');
+    Route::get('/datos', [PublicInscriptionController::class, 'editBasics'])->name('public.inscription.basics.edit');
+    Route::post('/datos', [PublicInscriptionController::class, 'storeBasics'])->middleware('throttle:inscription-store')->name('public.inscription.basics');
+    Route::post('/documentos', [PublicInscriptionController::class, 'upload'])->middleware('throttle:inscription-upload')->name('public.inscription.upload');
+    Route::get('/documentos/{step}/vista', [PublicInscriptionController::class, 'preview'])->name('public.inscription.preview');
+    Route::post('/continuar', [PublicInscriptionController::class, 'continueToForm'])->middleware('throttle:inscription-store')->name('public.inscription.continue');
+    Route::post('/enviar', [PublicInscriptionController::class, 'submitQuick'])->middleware('throttle:inscription-store')->name('public.inscription.quick');
+    Route::get('/formulario', [PublicInscriptionController::class, 'form'])->name('public.inscription.form');
+    Route::post('/formulario', [PublicInscriptionController::class, 'store'])->middleware('throttle:inscription-store')->name('public.inscription.store');
+    Route::get('/gracias', [PublicInscriptionController::class, 'thanks'])->name('public.inscription.thanks');
+    Route::post('/consultar', [PublicInscriptionController::class, 'lookup'])->middleware('throttle:inscription-store')->name('public.inscription.lookup');
+    Route::get('/solicitud', [PublicInscriptionController::class, 'request'])->name('public.inscription.request');
+    Route::put('/solicitud', [PublicInscriptionController::class, 'updateRequest'])->middleware('throttle:inscription-store')->name('public.inscription.request.update');
+    Route::post('/solicitud/documentos', [PublicInscriptionController::class, 'updateRequestDocument'])->middleware('throttle:inscription-upload')->name('public.inscription.request.documents');
+    Route::get('/solicitud/documentos/{document}/archivos/{file}', [PublicInscriptionController::class, 'downloadRequestFile'])->name('public.inscription.request.file');
+});
+
+Route::get('/auth/google', [GoogleAuthController::class, 'redirect'])->name('auth.google');
+Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
+
 Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
 
 Route::middleware('auth')->group(function (): void {
+    Route::get('/registro', [MemberRegistrationController::class, 'create'])->name('register.member');
+    Route::post('/registro', [MemberRegistrationController::class, 'store'])->name('register.member.store');
+});
+
+Route::middleware(['auth', 'member.profile'])->group(function (): void {
     Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index');
     Route::post('/organizations', [OrganizationController::class, 'store'])->name('organizations.store');
 
@@ -61,8 +102,20 @@ Route::middleware('auth')->group(function (): void {
 
             Route::get('/users', [OrganizationUserController::class, 'index'])->middleware('permission:users.view')->name('users.index');
             Route::post('/users', [OrganizationUserController::class, 'store'])->middleware('permission:users.create')->name('users.store');
+            Route::put('/users/{user}', [OrganizationUserController::class, 'update'])->middleware('permission:users.update')->name('users.update');
+
+            Route::get('/inscripciones', [InscriptionController::class, 'index'])->middleware('permission:inscriptions.view')->name('inscriptions.index');
+            Route::post('/inscripciones/links', [InscriptionController::class, 'store'])->middleware('permission:inscriptions.create')->name('inscriptions.links.store');
+            Route::post('/inscripciones/links/{inscriptionLink}/desactivar', [InscriptionController::class, 'deactivate'])->middleware('permission:inscriptions.create')->name('inscriptions.links.deactivate');
+            Route::delete('/inscripciones/links/{inscriptionLink}', [InscriptionController::class, 'destroy'])->middleware('permission:inscriptions.create')->name('inscriptions.links.destroy');
+            Route::get('/inscripciones/{application}', [InscriptionController::class, 'show'])->middleware('permission:inscriptions.view')->name('inscriptions.show');
+            Route::put('/inscripciones/{application}', [InscriptionController::class, 'update'])->middleware('permission:inscriptions.verify')->name('inscriptions.update');
+            Route::post('/inscripciones/{application}/documentos', [InscriptionController::class, 'storeDocument'])->middleware('permission:inscriptions.verify')->name('inscriptions.documents.store');
+            Route::post('/inscripciones/{application}/verificar', [InscriptionController::class, 'verify'])->middleware('permission:inscriptions.verify')->name('inscriptions.verify');
+            Route::post('/inscripciones/{application}/acceso', [InscriptionController::class, 'grantAccess'])->middleware('permission:inscriptions.verify')->name('inscriptions.access');
 
             Route::get('/roles', [RoleController::class, 'index'])->middleware('permission:roles.view')->name('roles.index');
+            Route::get('/roles/create', [RoleController::class, 'create'])->middleware('permission:roles.create')->name('roles.create');
             Route::post('/roles', [RoleController::class, 'store'])->middleware('permission:roles.create')->name('roles.store');
             Route::put('/roles/{role}', [RoleController::class, 'update'])->middleware('permission:roles.update')->name('roles.update');
         });

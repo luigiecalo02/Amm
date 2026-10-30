@@ -23,6 +23,15 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerate();
 
         $user = $request->user();
+
+        if ($user && ! $user->isSuperAdmin() && ! $user->person_id && ! $user->organizationRoles()->exists()) {
+            return redirect()->route('register.member');
+        }
+
+        if ($user?->isSuperAdmin()) {
+            return redirect()->route('organizations.index');
+        }
+
         $organization = $user?->currentOrganization
             ?? $user?->organizationRoles()->with('organization')->first()?->organization;
 

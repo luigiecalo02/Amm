@@ -18,7 +18,7 @@ class EnsureOrganizationMembership
             abort(403);
         }
 
-        if (! $user->belongsToOrganization($organization)) {
+        if (! $user->canAccessOrganization($organization)) {
             abort(403, 'No perteneces a esta organización.');
         }
 

@@ -25,4 +25,18 @@ class StoreOrganizationUserRequest extends FormRequest
             'person_id' => ['nullable', 'exists:people,id'],
         ];
     }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            $existing = User::query()->where('email', $this->input('email'))->first();
+
+            if ($existing?->isSuperAdmin()) {
+                $validator->errors()->add(
+                    'email',
+                    'El superadministrador no se asigna a un club. Ya puede ver todas las organizaciones.'
+                );
+            }
+        });
+    }
 }
