@@ -6,6 +6,7 @@ import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { useOrganization } from '@/composables/useOrganization';
 import type { PageProps } from '@/types';
+import { inscriptionFormDefaults } from '@/lib/inscriptionForm';
 
 type DocumentItem = {
     slug: string;
@@ -43,51 +44,7 @@ const props = defineProps<{
 const { clubPath } = useOrganization();
 const page = usePage<PageProps>();
 const fileError = computed(() => (page.props.errors as Record<string, string> | undefined)?.files ?? '');
-const dataForm = useForm({
-    ...props.form,
-    vehicle_role: props.form.vehicle_role ?? 'driver',
-    pilot_person_id: props.form.pilot_person_id ?? '',
-    license_categories: props.form.license_categories ?? [],
-    motorcycle: {
-        vehicle_type: 'motorcycle',
-        brand: '',
-        line: '',
-        model: '',
-        year: '',
-        color: '',
-        engine_displacement: '',
-        plate: '',
-        owner_name: '',
-        owner_document_number: '',
-        ...(props.form.motorcycle ?? {}),
-    },
-    health: {
-        eps: '',
-        blood_type: '',
-        rh: '',
-        weight_kg: '',
-        height_cm: '',
-        special_treatment: '',
-        medications: '',
-        allergies: '',
-        ...(props.form.health ?? {}),
-    },
-    emergency_contact: {
-        name: '',
-        phone: '',
-        address: '',
-        relationship: '',
-        ...(props.form.emergency_contact ?? {}),
-    },
-    metadata: {
-        church_name: '',
-        church_district: '',
-        church_role: '',
-        baptized: false,
-        baptized_at: '',
-        ...(props.form.metadata ?? {}),
-    },
-});
+const dataForm = useForm(inscriptionFormDefaults(props.form));
 const accessForm = useForm({
     email: props.application.email || props.application.person?.email || '',
     password: '',

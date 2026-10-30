@@ -4,6 +4,7 @@ import PublicLayout from '@/layouts/PublicLayout.vue';
 import InscriptionFormFields from '@/components/InscriptionFormFields.vue';
 import InscriptionWizardNav from '@/components/InscriptionWizardNav.vue';
 import { useForm } from '@inertiajs/vue3';
+import { inscriptionFormDefaults } from '@/lib/inscriptionForm';
 
 const props = defineProps<{
     club: { name: string; city?: string | null; slug: string };
@@ -15,51 +16,7 @@ const props = defineProps<{
     role?: 'driver' | 'passenger';
 }>();
 
-const form = useForm({
-    ...props.form,
-    vehicle_role: props.form.vehicle_role ?? props.role ?? 'driver',
-    pilot_person_id: props.form.pilot_person_id ?? '',
-    license_categories: props.form.license_categories ?? [],
-    motorcycle: {
-        vehicle_type: 'motorcycle',
-        brand: '',
-        line: '',
-        model: '',
-        year: '',
-        color: '',
-        engine_displacement: '',
-        plate: '',
-        owner_name: '',
-        owner_document_number: '',
-        ...(props.form.motorcycle ?? {}),
-    },
-    health: {
-        eps: '',
-        blood_type: '',
-        rh: '',
-        weight_kg: '',
-        height_cm: '',
-        special_treatment: '',
-        medications: '',
-        allergies: '',
-        ...(props.form.health ?? {}),
-    },
-    emergency_contact: {
-        name: '',
-        phone: '',
-        address: '',
-        relationship: '',
-        ...(props.form.emergency_contact ?? {}),
-    },
-    metadata: {
-        church_name: '',
-        church_district: '',
-        church_role: '',
-        baptized: false,
-        baptized_at: '',
-        ...(props.form.metadata ?? {}),
-    },
-});
+const form = useForm(inscriptionFormDefaults(props.form, props.role));
 
 const role = computed(() => props.role ?? form.vehicle_role ?? 'driver');
 const isPassenger = computed(() => role.value === 'passenger');
