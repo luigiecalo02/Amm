@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\KeepInscriptionFieldAction;
 use App\Actions\ReplaceInscriptionDocumentAction;
 use App\Actions\SubmitPublicInscriptionAction;
 use App\Actions\UpdatePendingInscriptionAction;
 use App\Enums\InscriptionApplicationStatus;
+use App\Http\Requests\Inscription\KeepInscriptionFieldRequest;
 use App\Http\Requests\Inscription\LookupInscriptionRequest;
 use App\Http\Requests\Inscription\ReplacePublicInscriptionDocumentRequest;
 use App\Http\Requests\Inscription\StoreInscriptionBasicsRequest;
@@ -42,8 +44,7 @@ class PublicInscriptionController extends Controller
         private readonly ColombianOfficialDocumentValidator $documentKinds,
         private readonly InscriptionExtractionReview $extractionReview,
         private readonly InscriptionDocumentCatalog $documentsCatalog,
-    ) {
-    }
+    ) {}
 
     public function show(string $token): Response|RedirectResponse
     {
@@ -89,6 +90,14 @@ class PublicInscriptionController extends Controller
         $previousRole = $application->form_draft['vehicle_role'] ?? null;
         $editing = $this->mapper->hasBasics($application->form_draft);
         $validated = $request->validated();
+        $application = $this->links->attachDocumentNumber($inscriptionLink, $application, $validated['document_number']);
+
+        if (! $application->canEditForm()) {
+            return redirect()
+                ->route('public.inscription.thanks', $inscriptionLink->token)
+                ->with('success', 'Esta cédula ya tiene una solicitud. Consúltala con el número de documento y el de solicitud.');
+        }
+
         $form = $this->mapper->toForm($application->extracted_data ?? [], [
             ...($application->form_draft ?? []),
             ...$validated,
@@ -96,6 +105,7 @@ class PublicInscriptionController extends Controller
         $form['document_type'] = $validated['document_type'];
         $form['document_number'] = $validated['document_number'];
         $form['first_name'] = $validated['first_name'];
+        $form['middle_name'] = $validated['middle_name'] ?? '';
         $form['last_name'] = $validated['last_name'];
         $form['second_last_name'] = $validated['second_last_name'] ?? '';
         $form['vehicle_role'] = $validated['vehicle_role'];
@@ -103,9 +113,11 @@ class PublicInscriptionController extends Controller
             'document_type' => $validated['document_type'],
             'document_number' => $validated['document_number'],
             'first_name' => $validated['first_name'],
+            'middle_name' => $validated['middle_name'] ?? '',
             'last_name' => $validated['last_name'],
             'second_last_name' => $validated['second_last_name'] ?? '',
         ];
+        $form['kept'] = $this->dropKeptBasics(is_array($form['kept'] ?? null) ? $form['kept'] : []);
 
         $payload = ['form_draft' => $form];
 
@@ -208,6 +220,26 @@ class PublicInscriptionController extends Controller
             ->with('analyzed', $step['analyze'] ? $step['key'] : null);
     }
 
+    public function keepField(KeepInscriptionFieldRequest $request, string $token, KeepInscriptionFieldAction $keep): RedirectResponse
+    {
+        $inscriptionLink = $this->link($token);
+        $application = $this->links->resolveApplication($inscriptionLink);
+
+        abort_unless($application->canEditForm(), 403);
+
+        $keep->execute(
+            $application,
+            $request->validated('step'),
+            $request->validated('key'),
+            $request->validated('source'),
+            $request->validated('value'),
+        );
+
+        return back()->with('success', $request->validated('source') === 'manual'
+            ? 'Guardamos el dato que escribiste.'
+            : 'Conservamos el dato que elegiste.');
+    }
+
     public function form(string $token): Response|RedirectResponse
     {
         $inscriptionLink = $this->link($token);
@@ -301,10 +333,12 @@ class PublicInscriptionController extends Controller
             'club' => $this->clubPayload($inscriptionLink),
             'token' => $inscriptionLink->token,
             'reference' => $application?->reference,
+            'status' => $application?->status?->value,
             'document_number' => $application?->person?->document_number
                 ?? $application?->form_draft['document_number']
                 ?? null,
             'can_update' => $application?->isPendingReview() ?? false,
+            'can_continue' => $application?->canEditForm() ?? false,
         ]);
     }
 
@@ -314,18 +348,29 @@ class PublicInscriptionController extends Controller
         $application = $this->links->lookup(
             $inscriptionLink,
             $request->validated('document_number'),
-            $request->validated('reference'),
         );
 
         if ($application === null) {
             return back()->withErrors([
-                'reference' => 'No encontramos una solicitud con esa cédula y ese número.',
+                'document_number' => 'No encontramos una solicitud con ese número de documento.',
             ]);
         }
 
         $this->links->rememberLookup($inscriptionLink, $application);
 
-        return redirect()->route('public.inscription.request', $inscriptionLink->token);
+        return redirect()->route('public.inscription.thanks', $inscriptionLink->token);
+    }
+
+    public function restart(string $token): RedirectResponse
+    {
+        $inscriptionLink = $this->link($token);
+
+        session()->forget([
+            $this->links->sessionKey($inscriptionLink),
+            $this->links->lookupSessionKey($inscriptionLink),
+        ]);
+
+        return redirect()->route('public.inscription.show', $inscriptionLink->token);
     }
 
     public function request(string $token): Response|RedirectResponse
@@ -337,7 +382,7 @@ class PublicInscriptionController extends Controller
         if ($application === null || $application->canEditForm()) {
             return redirect()
                 ->route('public.inscription.show', $inscriptionLink->token)
-                ->withErrors(['reference' => 'Consulta tu solicitud con el número de documento y el número de solicitud.']);
+                ->withErrors(['document_number' => 'Consulta tu solicitud con el número de documento.']);
         }
 
         $application->load([
@@ -481,6 +526,7 @@ class PublicInscriptionController extends Controller
                 $uploads,
                 is_string($lastAnalyzedKey) ? $lastAnalyzedKey : null,
                 $application->extracted_data ?? [],
+                is_array($application->form_draft['kept'] ?? null) ? $application->form_draft['kept'] : [],
             ),
             'wizard' => 'documents',
         ];
@@ -500,11 +546,42 @@ class PublicInscriptionController extends Controller
                 'document_type' => $registered['document_type'] !== '' ? $registered['document_type'] : 'cc',
                 'document_number' => $registered['document_number'],
                 'first_name' => $registered['first_name'],
+                'middle_name' => $registered['middle_name'],
                 'last_name' => $registered['last_name'],
                 'second_last_name' => $registered['second_last_name'],
                 'vehicle_role' => $draft['vehicle_role'] ?? '',
             ],
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $kept
+     * @return array<string, mixed>
+     */
+    private function dropKeptBasics(array $kept): array
+    {
+        $basics = [
+            'document_number',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'second_last_name',
+            'registered.document_number',
+            'registered.first_name',
+            'registered.middle_name',
+            'registered.last_name',
+            'registered.second_last_name',
+        ];
+
+        foreach ($kept as $key => $choice) {
+            $paths = is_array($choice) ? ($choice['paths'] ?? []) : [];
+
+            if (is_array($paths) && array_intersect($paths, $basics) !== []) {
+                unset($kept[$key]);
+            }
+        }
+
+        return $kept;
     }
 
     /**

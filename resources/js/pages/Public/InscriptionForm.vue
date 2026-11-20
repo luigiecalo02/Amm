@@ -54,7 +54,7 @@ const goTo = (index: number) => {
 const validateCurrent = (): boolean => {
     if (current.value.key === 'identity') {
         if (! form.first_name || ! form.last_name || ! form.document_number) {
-            stepMessage.value = 'Completa nombres, primer apellido y número de documento.';
+            stepMessage.value = 'Completa el nombre, el primer apellido y el número de documento.';
             return false;
         }
     }

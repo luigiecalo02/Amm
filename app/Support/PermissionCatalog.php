@@ -13,6 +13,7 @@ final class PermissionCatalog
             ['name' => 'Ver personas', 'slug' => 'people.view', 'module' => 'people', 'description' => 'Consultar personas del club'],
             ['name' => 'Crear personas', 'slug' => 'people.create', 'module' => 'people', 'description' => 'Registrar nuevas personas'],
             ['name' => 'Editar personas', 'slug' => 'people.update', 'module' => 'people', 'description' => 'Actualizar datos de personas'],
+            ['name' => 'Editar ficha', 'slug' => 'people.summary.update', 'module' => 'people', 'description' => 'Actualizar identidad, contacto, iglesia, salud y el piloto del copiloto desde la ficha'],
             ['name' => 'Eliminar personas', 'slug' => 'people.delete', 'module' => 'people', 'description' => 'Eliminar personas'],
 
             ['name' => 'Ver documentos', 'slug' => 'documents.view', 'module' => 'documents', 'description' => 'Consultar documentos'],
@@ -113,6 +114,18 @@ final class PermissionCatalog
             'people.view',
             'documents.view',
             'motorcycles.view',
+            'organization.view',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public static function chaplainDefaults(): array
+    {
+        return [
+            'people.view',
+            'members.view',
             'organization.view',
         ];
     }

@@ -24,6 +24,10 @@ final class DocumentTextExtractor
             $texts[] = $pdf;
         }
 
+        if (mb_strlen($hint) >= 40) {
+            return array_values(array_unique($texts));
+        }
+
         $image = $this->fromImage($absolutePath);
 
         if ($image !== '') {
@@ -96,7 +100,7 @@ final class DocumentTextExtractor
             '--psm',
             '6',
         ]);
-        $process->setTimeout(90);
+        $process->setTimeout(25);
         $process->run();
 
         if (! $process->isSuccessful()) {

@@ -6,6 +6,7 @@ use App\Actions\RegisterMemberAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\RegisterMemberRequest;
 use App\Models\Organization;
+use App\Services\Auth\AuthenticatedHome;
 use App\Services\Auth\GoogleAuthService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -17,17 +18,8 @@ class MemberRegistrationController extends Controller
     {
         $user = request()->user();
 
-        if ($user?->isSuperAdmin()) {
-            return redirect()->route('organizations.index');
-        }
-
-        if ($user?->person_id || $user?->organizationRoles()->exists()) {
-            $organization = $user->currentOrganization
-                ?? $user->organizationRoles()->with('organization')->first()?->organization;
-
-            return $organization
-                ? redirect()->route('dashboard', $organization)
-                : redirect()->route('organizations.index');
+        if ($user?->isSuperAdmin() || $user?->person_id || $user?->organizationRoles()->exists()) {
+            return redirect()->to(app(AuthenticatedHome::class)->url($user));
         }
 
         $names = $googleAuth->splitName($user?->name);

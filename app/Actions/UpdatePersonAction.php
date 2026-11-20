@@ -61,8 +61,8 @@ class UpdatePersonAction
                         ...($data['metadata'] ?? []),
                         'license_document_number' => $data['license_document_number'] ?? ($membership->metadata['license_document_number'] ?? null),
                         'license_categories' => $data['license_categories'] ?? ($membership->metadata['license_categories'] ?? []),
-                        'vehicle_owner_name' => $data['motorcycle']['owner_name'] ?? ($membership->metadata['vehicle_owner_name'] ?? null),
-                        'vehicle_owner_document' => $data['motorcycle']['owner_document_number'] ?? ($membership->metadata['vehicle_owner_document'] ?? null),
+                        'vehicle_owner_name' => data_get($data, 'motorcycle.owner_name') ?? ($membership->metadata['vehicle_owner_name'] ?? null),
+                        'vehicle_owner_document' => data_get($data, 'motorcycle.owner_document_number') ?? ($membership->metadata['vehicle_owner_document'] ?? null),
                         'pilot_person_id' => $data['pilot_person_id'] ?? ($membership->metadata['pilot_person_id'] ?? null),
                     ],
                 ])->save();

@@ -30,7 +30,33 @@ class PermissionService
 
     public function createOrganizationRoles(Organization $organization): void
     {
-        $defaults = [
+        $permissions = Permission::query()->pluck('id', 'slug');
+
+        foreach ($this->defaultRoles() as $definition) {
+            $role = $this->firstOrCreateDefaultRole($organization, $definition);
+            $this->grant($role, $definition['permissions'], $permissions);
+        }
+    }
+
+    public function ensureMissingSystemRoles(Organization $organization): void
+    {
+        $permissions = Permission::query()->pluck('id', 'slug');
+
+        foreach ($this->defaultRoles() as $definition) {
+            $role = $this->firstOrCreateDefaultRole($organization, $definition);
+
+            if ($role->wasRecentlyCreated) {
+                $this->grant($role, $definition['permissions'], $permissions);
+            }
+        }
+    }
+
+    /**
+     * @return list<array{name: string, slug: string, description?: string, permissions: array<int, string>}>
+     */
+    private function defaultRoles(): array
+    {
+        return [
             [
                 'name' => 'Superadministrador',
                 'slug' => Role::CLUB_SUPER_ADMIN_SLUG,
@@ -41,28 +67,38 @@ class PermissionService
             ['name' => 'Subdirector', 'slug' => 'subdirector', 'permissions' => PermissionCatalog::directorDefaults()],
             ['name' => 'Secretario', 'slug' => 'secretario', 'permissions' => PermissionCatalog::secretaryDefaults()],
             ['name' => 'Tesorero', 'slug' => 'tesorero', 'permissions' => PermissionCatalog::treasurerDefaults()],
+            ['name' => 'Capellán', 'slug' => 'capellan', 'description' => 'Acompaña al club y recibe los avisos de la directiva', 'permissions' => PermissionCatalog::chaplainDefaults()],
             ['name' => 'Miembro', 'slug' => 'miembro', 'permissions' => PermissionCatalog::memberDefaults()],
         ];
+    }
 
-        $permissions = Permission::query()->pluck('id', 'slug');
+    /**
+     * @param  array{name: string, slug: string, description?: string, permissions: array<int, string>}  $definition
+     */
+    private function firstOrCreateDefaultRole(Organization $organization, array $definition): Role
+    {
+        return Role::query()->firstOrCreate(
+            [
+                'organization_id' => $organization->id,
+                'slug' => $definition['slug'],
+            ],
+            [
+                'name' => $definition['name'],
+                'description' => $definition['description'] ?? 'Rol inicial del club',
+                'is_system' => true,
+            ]
+        );
+    }
 
-        foreach ($defaults as $definition) {
-            $role = Role::query()->firstOrCreate(
-                [
-                    'organization_id' => $organization->id,
-                    'slug' => $definition['slug'],
-                ],
-                [
-                    'name' => $definition['name'],
-                    'description' => $definition['description'] ?? 'Rol inicial del club',
-                    'is_system' => true,
-                ]
-            );
-
-            $role->permissions()->sync(
-                collect($definition['permissions'])->map(fn (string $slug) => $permissions[$slug] ?? null)->filter()->all()
-            );
-        }
+    /**
+     * @param  array<int, string>  $slugs
+     * @param  Collection<string, string>  $permissions
+     */
+    private function grant(Role $role, array $slugs, Collection $permissions): void
+    {
+        $role->permissions()->sync(
+            collect($slugs)->map(fn (string $slug) => $permissions[$slug] ?? null)->filter()->all()
+        );
     }
 
     public function createRole(Organization $organization, array $data): Role
@@ -93,6 +129,30 @@ class PermissionService
         $role->permissions()->sync($ids);
 
         return $role->refresh()->load('permissions');
+    }
+
+    public function grantDefaultPermission(string $slug): void
+    {
+        $permissionId = Permission::query()->where('slug', $slug)->value('id');
+
+        if (! is_string($permissionId)) {
+            return;
+        }
+
+        foreach (Organization::query()->get() as $organization) {
+            foreach ($this->defaultRoles() as $definition) {
+                if (! in_array($slug, $definition['permissions'], true)) {
+                    continue;
+                }
+
+                $role = Role::query()
+                    ->where('organization_id', $organization->id)
+                    ->where('slug', $definition['slug'])
+                    ->first();
+
+                $role?->permissions()->syncWithoutDetaching([$permissionId]);
+            }
+        }
     }
 
     public function assignRole(Organization $organization, User $user, Role $role): void

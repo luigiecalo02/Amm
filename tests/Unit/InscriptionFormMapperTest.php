@@ -59,6 +59,46 @@ class InscriptionFormMapperTest extends TestCase
         $this->assertSame('LUIGIE', $form['first_name']);
     }
 
+    public function test_a_kept_choice_wins_over_the_extraction(): void
+    {
+        $form = (new InscriptionFormMapper)->toForm(
+            ['first_name' => 'ANA'],
+            [
+                'first_name' => 'Luigie',
+                'kept' => [
+                    'first_name' => [
+                        'source' => 'registered',
+                        'value' => 'Luigie',
+                        'paths' => ['first_name', 'registered.first_name'],
+                    ],
+                ],
+            ],
+        );
+
+        $this->assertSame('Luigie', $form['first_name']);
+        $this->assertSame('Luigie', $form['registered']['first_name']);
+    }
+
+    public function test_draft_license_fills_when_extraction_is_empty(): void
+    {
+        $form = (new InscriptionFormMapper)->toForm(
+            [],
+            [
+                'license_document_number' => '1047475332',
+                'license_expiration' => '2028-03-15',
+                'license_categories' => [['category' => 'A2', 'expires_at' => '2028-03-15']],
+                'health' => ['eps' => 'Nueva EPS'],
+                'motorcycle' => ['plate' => 'ABC12D'],
+            ],
+        );
+
+        $this->assertSame('1047475332', $form['license_document_number']);
+        $this->assertSame('2028-03-15', $form['license_expiration']);
+        $this->assertSame('A2', $form['license_categories'][0]['category']);
+        $this->assertSame('Nueva EPS', $form['health']['eps']);
+        $this->assertSame('ABC12D', $form['motorcycle']['plate']);
+    }
+
     public function test_it_warns_when_license_or_owner_id_does_not_match_cedula(): void
     {
         $mapper = new InscriptionFormMapper;

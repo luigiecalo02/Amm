@@ -19,6 +19,7 @@ class DocumentFile extends Model
         'disk',
         'path',
         'filename',
+        'side',
         'mime_type',
         'size',
         'checksum',

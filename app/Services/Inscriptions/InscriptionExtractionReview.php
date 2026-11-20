@@ -12,7 +12,7 @@ final class InscriptionExtractionReview
     private const LABELS = [
         'document_number' => 'Número de documento',
         'document_type' => 'Tipo de documento',
-        'first_name' => 'Nombres',
+        'first_name' => 'Nombre',
         'middle_name' => 'Segundo nombre',
         'last_name' => 'Primer apellido',
         'second_last_name' => 'Segundo apellido',
@@ -39,7 +39,7 @@ final class InscriptionExtractionReview
 
     /**
      * @param  array<string, mixed>  $draft
-     * @return array{document_type: string, document_number: string, first_name: string, last_name: string, second_last_name: string}
+     * @return array{document_type: string, document_number: string, first_name: string, middle_name: string, last_name: string, second_last_name: string}
      */
     public function registeredFrom(array $draft): array
     {
@@ -49,6 +49,7 @@ final class InscriptionExtractionReview
             'document_type' => (string) ($snapshot['document_type'] ?? $draft['document_type'] ?? 'cc'),
             'document_number' => (string) ($snapshot['document_number'] ?? $draft['document_number'] ?? ''),
             'first_name' => (string) ($snapshot['first_name'] ?? $draft['first_name'] ?? ''),
+            'middle_name' => (string) ($snapshot['middle_name'] ?? $draft['middle_name'] ?? ''),
             'last_name' => (string) ($snapshot['last_name'] ?? $draft['last_name'] ?? ''),
             'second_last_name' => (string) ($snapshot['second_last_name'] ?? $draft['second_last_name'] ?? ''),
         ];
@@ -58,9 +59,10 @@ final class InscriptionExtractionReview
      * @param  array<string, mixed>  $registered
      * @param  array<string, mixed>  $uploads
      * @param  array<string, mixed>  $merged
+     * @param  array<string, mixed>  $kept
      * @return array<string, mixed>|null
      */
-    public function forLastAnalyzed(array $registered, array $uploads, ?string $lastKey, array $merged = []): ?array
+    public function forLastAnalyzed(array $registered, array $uploads, ?string $lastKey, array $merged = [], array $kept = []): ?array
     {
         if ($lastKey === null || empty($uploads[$lastKey]['analyzed'])) {
             return null;
@@ -93,8 +95,9 @@ final class InscriptionExtractionReview
             && ! empty($uploads[$backKey]);
 
         $combined = $this->combineExtracted($front, $back, $merged);
-        $fields = $this->identityFields($step['type'], $registered, $front, $back);
+        $fields = $this->identityFields($step['type'], $registered, $front, $back, $hasMate, $kept);
         $matches = $this->matchesRegistered($fields, $bothSides);
+        $decided = collect($fields)->contains(fn (array $field): bool => $field['status'] === 'kept');
 
         return [
             'step' => $lastKey,
@@ -104,7 +107,7 @@ final class InscriptionExtractionReview
             'has_mate' => $hasMate,
             'both_sides' => $bothSides,
             'matches_registered' => $matches,
-            'headline' => $this->headline($hasMate, $bothSides, $matches, $combined !== []),
+            'headline' => $this->headline($hasMate, $bothSides, $matches, $combined !== [], $decided),
             'fields' => $fields,
             'extracted' => $this->displayRows($combined),
             'extracted_front' => $this->displayRows($front),
@@ -144,11 +147,74 @@ final class InscriptionExtractionReview
 
     /**
      * @param  array<string, mixed>  $registered
+     * @param  array<string, mixed>  $uploads
+     * @return array{value: string, paths: list<string>}|null
+     */
+    public function choice(array $registered, array $uploads, string $stepKey, string $fieldKey, string $source): ?array
+    {
+        $review = $this->forLastAnalyzed($registered, $uploads, $stepKey);
+
+        if ($review === null) {
+            return null;
+        }
+
+        $field = collect($review['fields'])->firstWhere('key', $fieldKey);
+
+        if (! is_array($field)) {
+            return null;
+        }
+
+        $selected = collect($field['choices'] ?? [])->firstWhere('source', $source);
+
+        if (! is_array($selected) || ! is_string($selected['value'] ?? null) || $selected['value'] === '') {
+            return null;
+        }
+
+        $step = InscriptionDocumentSteps::find($stepKey);
+        $paths = $this->keepPaths($step['type'] ?? null, $fieldKey);
+
+        if ($paths === []) {
+            return null;
+        }
+
+        return [
+            'value' => $selected['value'],
+            'paths' => $paths,
+        ];
+    }
+
+    /**
+     * @return array{value: string, paths: list<string>}|null
+     */
+    public function manualChoice(string $stepKey, string $fieldKey, string $value): ?array
+    {
+        $value = trim($value);
+        $step = InscriptionDocumentSteps::find($stepKey);
+
+        if ($step === null || $value === '') {
+            return null;
+        }
+
+        $paths = $this->keepPaths($step['type'] ?? null, $fieldKey);
+
+        if ($paths === []) {
+            return null;
+        }
+
+        return [
+            'value' => $value,
+            'paths' => $paths,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $registered
      * @param  array<string, mixed>  $front
      * @param  array<string, mixed>  $back
-     * @return list<array{key: string, label: string, registered: string|null, front: string|null, back: string|null, status: string}>
+     * @param  array<string, mixed>  $kept
+     * @return list<array{key: string, label: string, registered: string|null, front: string|null, back: string|null, status: string, choices: list<array{source: string, label: string, value: string}>, kept_source: string|null}>
      */
-    private function identityFields(?string $type, array $registered, array $front, array $back): array
+    private function identityFields(?string $type, array $registered, array $front, array $back, bool $hasMate = true, array $kept = []): array
     {
         $map = match ($type) {
             'cedula' => [
@@ -176,14 +242,15 @@ final class InscriptionExtractionReview
             $frontValue = $this->scalar($front[$field['extracted']] ?? null);
             $backValue = $this->scalar($back[$field['extracted']] ?? null);
 
-            $fields[] = [
-                'key' => $field['key'],
-                'label' => self::LABELS[$field['key']] ?? $field['key'],
-                'registered' => $this->scalar($registeredValue),
-                'front' => $frontValue,
-                'back' => $backValue,
-                'status' => $this->status($registeredValue, $frontValue, $backValue, $field['key']),
-            ];
+            $fields[] = $this->fieldRow(
+                $field['key'],
+                $this->scalar($registeredValue),
+                $frontValue,
+                $backValue,
+                $hasMate,
+                $type,
+                $kept,
+            );
         }
 
         foreach (['middle_name', 'birth_date', 'gender', 'blood_type', 'rh', 'height_cm'] as $extra) {
@@ -194,17 +261,108 @@ final class InscriptionExtractionReview
             $frontValue = $this->scalar($front[$extra] ?? null);
             $backValue = $this->scalar($back[$extra] ?? null);
 
-            $fields[] = [
-                'key' => $extra,
-                'label' => self::LABELS[$extra] ?? $extra,
-                'registered' => null,
-                'front' => $frontValue,
-                'back' => $backValue,
-                'status' => $this->status(null, $frontValue, $backValue, $extra),
-            ];
+            $fields[] = $this->fieldRow($extra, null, $frontValue, $backValue, $hasMate, $type, $kept);
         }
 
         return $fields;
+    }
+
+    /**
+     * @param  array<string, mixed>  $kept
+     * @return array{key: string, label: string, registered: string|null, front: string|null, back: string|null, status: string, choices: list<array{source: string, label: string, value: string}>, kept_source: string|null}
+     */
+    private function fieldRow(
+        string $key,
+        ?string $registered,
+        ?string $front,
+        ?string $back,
+        bool $hasMate,
+        ?string $type,
+        array $kept,
+    ): array {
+        $status = $this->status($registered, $front, $back, $key);
+        $choices = $this->fieldChoices($registered, $front, $back, $hasMate, $this->keepPaths($type, $key));
+        $keptChoice = $kept[$key] ?? null;
+        $keptSource = is_array($keptChoice) ? ($keptChoice['source'] ?? null) : null;
+        $keptSource = is_string($keptSource) && ($keptSource === 'manual' || collect($choices)->contains('source', $keptSource))
+            ? $keptSource
+            : null;
+        $keptValue = is_array($keptChoice) && is_string($keptChoice['value'] ?? null) ? $keptChoice['value'] : null;
+
+        if ($keptSource !== null && $status !== 'match') {
+            $status = 'kept';
+        }
+
+        return [
+            'key' => $key,
+            'label' => self::LABELS[$key] ?? $key,
+            'registered' => $registered,
+            'front' => $front,
+            'back' => $back,
+            'status' => $status,
+            'choices' => $status === 'match' ? [] : $choices,
+            'kept_source' => $status === 'kept' ? $keptSource : null,
+            'kept_value' => $status === 'kept' ? $keptValue : null,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function keepPaths(?string $type, string $key): array
+    {
+        $shared = [
+            'document_number' => ['document_number', 'registered.document_number'],
+            'first_name' => ['first_name', 'registered.first_name'],
+            'middle_name' => ['middle_name', 'registered.middle_name'],
+            'last_name' => ['last_name', 'registered.last_name'],
+            'second_last_name' => ['second_last_name', 'registered.second_last_name'],
+            'birth_date' => ['birth_date'],
+            'gender' => ['gender'],
+            'blood_type' => ['health.blood_type'],
+            'rh' => ['health.rh'],
+            'height_cm' => ['health.height_cm'],
+        ];
+
+        $specific = match ($type) {
+            'licencia' => [
+                'document_number' => ['document_number', 'registered.document_number', 'license_document_number'],
+            ],
+            'tarjeta-propiedad' => [
+                'document_number' => ['document_number', 'registered.document_number', 'motorcycle.owner_document_number'],
+                'owner_name' => ['motorcycle.owner_name'],
+            ],
+            default => [],
+        };
+
+        return $specific[$key] ?? $shared[$key] ?? [];
+    }
+
+    /**
+     * @param  list<string>  $paths
+     * @return list<array{source: string, label: string, value: string}>
+     */
+    private function fieldChoices(?string $registered, ?string $front, ?string $back, bool $hasMate, array $paths): array
+    {
+        if ($paths === []) {
+            return [];
+        }
+
+        $choices = [];
+
+        if ($registered !== null && $registered !== '') {
+            $choices[] = ['source' => 'registered', 'label' => 'Registrado', 'value' => $registered];
+        }
+
+        if ($front !== null && $front !== '') {
+            $choices[] = ['source' => 'front', 'label' => $hasMate ? 'Frente' : 'Leído', 'value' => $front];
+        }
+
+        if ($hasMate && $back !== null && $back !== '') {
+            $choices[] = ['source' => 'back', 'label' => 'Reverso', 'value' => $back];
+        }
+
+        return $choices;
     }
 
     /**
@@ -222,18 +380,20 @@ final class InscriptionExtractionReview
             return false;
         }
 
-        if (in_array('match', $statuses, true)) {
+        if (in_array('match', $statuses, true) || in_array('kept', $statuses, true)) {
             return true;
         }
 
         return null;
     }
 
-    private function headline(bool $hasMate, bool $bothSides, ?bool $matches, bool $hasExtracted): string
+    private function headline(bool $hasMate, bool $bothSides, ?bool $matches, bool $hasExtracted, bool $decided = false): string
     {
         if ($bothSides) {
             return match ($matches) {
-                true => 'Frente y reverso coinciden con los datos que registraste.',
+                true => $decided
+                    ? 'Conservamos el dato que elegiste.'
+                    : 'Frente y reverso coinciden con los datos que registraste.',
                 false => 'Hay diferencias entre lo registrado y lo que leímos en frente o reverso.',
                 default => 'No pudimos leer texto en las fotos. Puedes continuar y completar los datos a mano.',
             };
@@ -323,6 +483,7 @@ final class InscriptionExtractionReview
     {
         return trim(implode(' ', array_filter([
             $registered['first_name'] ?? '',
+            $registered['middle_name'] ?? '',
             $registered['last_name'] ?? '',
             $registered['second_last_name'] ?? '',
         ], fn ($part) => filled($part))));
@@ -345,6 +506,7 @@ final class InscriptionExtractionReview
                     $category = $item['category'] ?? '';
                     $expires = $item['expires_at'] ?? '';
                     $parts[] = trim($category.($expires !== '' && $expires !== null ? " ({$expires})" : ''));
+
                     continue;
                 }
 

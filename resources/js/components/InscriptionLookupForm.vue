@@ -8,10 +8,11 @@ const props = defineProps<{
 
 const form = useForm({
     document_number: '',
-    reference: '',
 });
+const restart = useForm({});
 
 const submit = () => form.post(`/i/${props.token}/consultar`);
+const startNew = () => restart.post(`/i/${props.token}/nueva`);
 </script>
 
 <template>
@@ -20,19 +21,26 @@ const submit = () => form.post(`/i/${props.token}/consultar`);
             <p class="text-xs uppercase tracking-widest text-ember-400">Ya enviaste tu inscripción</p>
             <h2 class="font-display text-2xl">Consultar solicitud</h2>
             <p class="mt-1 text-sm text-cream/60">
-                Ingresa tu número de documento y el número de solicitud. Si sigue pendiente, puedes actualizar datos y documentos.
+                Ingresa tu número de documento. Si ya está registrada, verás el estado actual. Si no aparece, puedes empezar un registro nuevo.
             </p>
         </div>
-        <form class="grid gap-3 md:grid-cols-2" @submit.prevent="submit">
+        <form class="space-y-3" @submit.prevent="submit">
             <FormField label="Número de documento">
                 <input v-model="form.document_number" class="field" required placeholder="Cédula" />
             </FormField>
-            <FormField label="Número de solicitud">
-                <input v-model="form.reference" class="field" required placeholder="AMM-2026-0001" />
-            </FormField>
-            <p v-if="form.errors.reference" class="text-sm text-red-300 md:col-span-2">{{ form.errors.reference }}</p>
-            <p v-if="form.errors.document_number" class="text-sm text-red-300 md:col-span-2">{{ form.errors.document_number }}</p>
-            <button class="btn-primary md:col-span-2" :disabled="form.processing">Consultar</button>
+            <p v-if="form.errors.document_number" class="text-sm text-red-300">{{ form.errors.document_number }}</p>
+            <div class="flex flex-wrap gap-2">
+                <button class="btn-primary" :disabled="form.processing">Consultar</button>
+                <button
+                    v-if="form.errors.document_number"
+                    type="button"
+                    class="btn-ghost"
+                    :disabled="restart.processing"
+                    @click="startNew"
+                >
+                    Crear un registro nuevo
+                </button>
+            </div>
         </form>
     </section>
 </template>

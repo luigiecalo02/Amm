@@ -22,7 +22,10 @@ class OrganizationUserController extends Controller
         $users = User::query()
             ->where('is_platform_admin', false)
             ->whereHas('organizationRoles', fn ($query) => $query->where('organization_id', $organization->id))
-            ->with(['organizationRoles' => fn ($query) => $query->where('organization_id', $organization->id)->with('role')])
+            ->with([
+                'person:id,phone',
+                'organizationRoles' => fn ($query) => $query->where('organization_id', $organization->id)->with('role'),
+            ])
             ->orderBy('name')
             ->get();
 
@@ -75,7 +78,31 @@ class OrganizationUserController extends Controller
             ->firstOrFail();
 
         $assign->execute($organization, $user, $role, $request->user());
+        $accessChanged = $this->updateAccess($user, $request);
 
-        return back()->with('success', 'Rol del usuario actualizado.');
+        return back()->with('success', $accessChanged
+            ? 'Correo y contraseña de ingreso actualizados.'
+            : 'Rol del usuario actualizado.');
+    }
+
+    private function updateAccess(User $user, UpdateOrganizationUserRequest $request): bool
+    {
+        $attributes = [];
+
+        if ($request->exists('email')) {
+            $attributes['email'] = $request->validated('email');
+        }
+
+        if ($request->filled('password')) {
+            $attributes['password'] = $request->validated('password');
+        }
+
+        if ($attributes === []) {
+            return false;
+        }
+
+        $user->fill($attributes)->save();
+
+        return true;
     }
 }

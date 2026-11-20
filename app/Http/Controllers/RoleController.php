@@ -14,21 +14,20 @@ use Inertia\Response;
 
 class RoleController extends Controller
 {
-    public function __construct(private readonly PermissionService $permissions)
-    {
-    }
+    public function __construct(private readonly PermissionService $permissions) {}
 
     public function index(Organization $organization): Response
     {
         $this->authorize('viewAny', [Role::class, $organization]);
+        $this->permissions->ensureMissingSystemRoles($organization);
 
         return Inertia::render('Roles/Index', [
             'roles' => Role::query()
                 ->forOrganization($organization->id)
                 ->with('permissions')
-            ->orderByRaw("CASE WHEN slug = ? THEN 0 ELSE 1 END", [Role::CLUB_SUPER_ADMIN_SLUG])
-            ->orderBy('name')
-            ->get(),
+                ->orderByRaw('CASE WHEN slug = ? THEN 0 ELSE 1 END', [Role::CLUB_SUPER_ADMIN_SLUG])
+                ->orderBy('name')
+                ->get(),
             'catalog' => $this->permissions->permissionsByModule(),
         ]);
     }

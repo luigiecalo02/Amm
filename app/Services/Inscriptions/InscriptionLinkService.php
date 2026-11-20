@@ -7,12 +7,15 @@ use App\Models\InscriptionApplication;
 use App\Models\InscriptionLink;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
+use App\Models\Person;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class InscriptionLinkService
 {
+    public const DOCUMENT_ALREADY_REGISTERED = 'Ese documento ya está registrado. No se puede guardar otra inscripción.';
+
     public function create(Organization $organization, User $creator, array $data): InscriptionLink
     {
         $days = isset($data['expires_in_days']) ? (int) $data['expires_in_days'] : 30;
@@ -57,6 +60,83 @@ class InscriptionLinkService
         return $application;
     }
 
+    public function normalizeDocumentNumber(string $documentNumber): string
+    {
+        return preg_replace('/\D+/', '', $documentNumber) ?? '';
+    }
+
+    public function registeredPerson(string $documentNumber): ?Person
+    {
+        $digits = $this->normalizeDocumentNumber($documentNumber);
+        $raw = mb_strtoupper(trim($documentNumber));
+
+        if ($digits === '' && $raw === '') {
+            return null;
+        }
+
+        return Person::query()
+            ->where(function ($query) use ($digits, $raw): void {
+                if ($digits !== '') {
+                    $query->whereRaw(
+                        "REPLACE(REPLACE(REPLACE(document_number, '.', ''), ' ', ''), '-', '') = ?",
+                        [$digits],
+                    );
+                }
+
+                if ($raw !== '' && $raw !== $digits) {
+                    $method = $digits === '' ? 'whereRaw' : 'orWhereRaw';
+                    $query->{$method}('UPPER(TRIM(document_number)) = ?', [$raw]);
+                }
+            })
+            ->first();
+    }
+
+    public function attachDocumentNumber(
+        InscriptionLink $link,
+        InscriptionApplication $current,
+        string $documentNumber,
+    ): InscriptionApplication {
+        $digits = $this->normalizeDocumentNumber($documentNumber);
+
+        if ($digits === '') {
+            return $current;
+        }
+
+        return DB::transaction(function () use ($link, $current, $digits): InscriptionApplication {
+            $existing = InscriptionApplication::query()
+                ->where('organization_id', $current->organization_id)
+                ->where('document_number', $digits)
+                ->whereKeyNot($current->id)
+                ->lockForUpdate()
+                ->orderByRaw("CASE status WHEN 'access_granted' THEN 0 WHEN 'verified' THEN 1 WHEN 'submitted' THEN 2 ELSE 3 END")
+                ->orderByDesc('updated_at')
+                ->first();
+
+            if ($existing) {
+                if ($existing->canEditForm() && $current->canEditForm()) {
+                    $existing->forceFill([
+                        'uploads' => filled($existing->uploads) ? $existing->uploads : $current->uploads,
+                        'extracted_data' => filled($existing->extracted_data) ? $existing->extracted_data : $current->extracted_data,
+                        'form_draft' => array_merge($existing->form_draft ?? [], $current->form_draft ?? []),
+                    ])->save();
+                }
+
+                if ($current->canEditForm() && $current->id !== $existing->id) {
+                    $current->delete();
+                }
+
+                $this->rememberLookup($link, $existing);
+
+                return $existing;
+            }
+
+            $current->forceFill(['document_number' => $digits])->save();
+            $this->rememberLookup($link, $current);
+
+            return $current;
+        });
+    }
+
     public function sessionKey(InscriptionLink $link): string
     {
         return 'inscription.'.$link->id;
@@ -93,35 +173,26 @@ class InscriptionLinkService
         });
     }
 
-    public function normalizeReference(string $reference): string
-    {
-        $compact = strtoupper((string) preg_replace('/\s+/', '', $reference));
-
-        if (preg_match('/^AMM-?(\d{4})-?(\d{1,4})$/', $compact, $match)) {
-            return sprintf('AMM-%s-%04d', $match[1], (int) $match[2]);
-        }
-
-        return $compact;
-    }
-
-    public function lookup(InscriptionLink $link, string $documentNumber, string $reference): ?InscriptionApplication
+    public function lookup(InscriptionLink $link, string $documentNumber): ?InscriptionApplication
     {
         $digits = preg_replace('/\D+/', '', $documentNumber) ?? '';
-        $normalized = $this->normalizeReference($reference);
 
-        if ($digits === '' || $normalized === '') {
+        if ($digits === '') {
             return null;
         }
 
         return InscriptionApplication::query()
             ->where('organization_id', $link->organization_id)
-            ->where('reference', $normalized)
-            ->whereHas('person', function ($query) use ($digits): void {
-                $query->whereRaw(
-                    "REPLACE(REPLACE(REPLACE(document_number, '.', ''), ' ', ''), '-', '') = ?",
-                    [$digits]
-                );
+            ->where(function ($query) use ($digits): void {
+                $query->where('document_number', $digits)
+                    ->orWhereHas('person', function ($person) use ($digits): void {
+                        $person->whereRaw(
+                            "REPLACE(REPLACE(REPLACE(document_number, '.', ''), ' ', ''), '-', '') = ?",
+                            [$digits]
+                        );
+                    });
             })
+            ->latest()
             ->first();
     }
 
@@ -153,7 +224,7 @@ class InscriptionLinkService
     }
 
     /**
-     * @return array<int, array{id: string, name: string, document_number: string|null}>
+     * @return array<int, array{id: string, name: string, document_type: string|null, document_number: string|null, phone: string|null, email: string|null, plate: string|null, brand: string|null, line: string|null}>
      */
     public function pilots(Organization $organization): array
     {
@@ -161,13 +232,23 @@ class InscriptionLinkService
             ->where('organization_id', $organization->id)
             ->whereIn('vehicle_role', ['driver', 'both'])
             ->whereHas('person')
-            ->with('person')
+            ->with('person.motorcycles')
             ->get()
-            ->map(fn (OrganizationMember $member) => [
-                'id' => $member->person_id,
-                'name' => $member->person?->full_name ?? 'Piloto',
-                'document_number' => $member->person?->document_number,
-            ])
+            ->map(function (OrganizationMember $member): array {
+                $motorcycle = $member->person?->motorcycles->first();
+
+                return [
+                    'id' => $member->person_id,
+                    'name' => $member->person?->full_name ?? 'Piloto',
+                    'document_type' => $member->person?->document_type,
+                    'document_number' => $member->person?->document_number,
+                    'phone' => $member->person?->phone,
+                    'email' => $member->person?->email,
+                    'plate' => $motorcycle?->plate,
+                    'brand' => $motorcycle?->brand,
+                    'line' => $motorcycle?->model,
+                ];
+            })
             ->unique('id')
             ->values()
             ->all();

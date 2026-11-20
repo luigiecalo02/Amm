@@ -18,7 +18,6 @@ class LookupInscriptionRequest extends FormRequest
     {
         return [
             'document_number' => ['required', 'string', 'max:40'],
-            'reference' => ['required', 'string', 'max:30'],
         ];
     }
 }

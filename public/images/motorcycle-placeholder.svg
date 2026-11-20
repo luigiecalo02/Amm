@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" role="img" aria-label="Sin foto de la moto">
+    <rect width="640" height="240" fill="#121821"/>
+    <g fill="none" stroke="#C9B8A6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity=".55">
+        <circle cx="188" cy="168" r="36"/>
+        <circle cx="452" cy="168" r="36"/>
+        <path d="M188 168h92l48-64h72l56 64h-36M280 104h96l28 40M328 104V72h56"/>
+    </g>
+</svg>

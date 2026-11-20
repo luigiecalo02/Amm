@@ -4,6 +4,7 @@ namespace App\Http\Requests\Inscription;
 
 use App\Models\InscriptionLink;
 use App\Models\OrganizationMember;
+use App\Services\Inscriptions\InscriptionLinkService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -132,6 +133,12 @@ class SubmitPublicInscriptionRequest extends FormRequest
                     'license_document_number',
                     'La identificación de la licencia debe coincidir con la cédula.'
                 );
+            }
+
+            $taken = app(InscriptionLinkService::class)->registeredPerson((string) $this->input('document_number'));
+
+            if ($taken !== null) {
+                $validator->errors()->add('document_number', InscriptionLinkService::DOCUMENT_ALREADY_REGISTERED);
             }
 
             $pilotId = $this->input('pilot_person_id');

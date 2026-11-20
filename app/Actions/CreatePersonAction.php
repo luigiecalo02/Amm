@@ -36,18 +36,20 @@ class CreatePersonAction
                     'neighborhood',
                     'city',
                     'department',
-                ])->all(),
+                ])->map(fn ($value) => $this->blankToNull($value))->all(),
                 'photo' => $data['photo'] ?? null,
                 'status' => $data['status'] ?? PersonStatus::Active,
             ]);
 
-            if (! empty($data['health'])) {
-                $person->healthProfile()->create($data['health']);
+            $health = $this->healthPayload($data['health'] ?? null);
+
+            if ($health !== null) {
+                $person->healthProfile()->create($health);
             }
 
-            if (! empty($data['emergency_contact']['name'])) {
+            if (filled($data['emergency_contact']['name'] ?? null)) {
                 $person->emergencyContacts()->create([
-                    ...$data['emergency_contact'],
+                    ...collect($data['emergency_contact'])->map(fn ($value) => $this->blankToNull($value))->all(),
                     'is_primary' => true,
                 ]);
             }
@@ -62,16 +64,16 @@ class CreatePersonAction
                 'metadata' => $data['metadata'] ?? [],
             ]);
 
-            if (! empty($data['motorcycle']['plate'])) {
-                $motorcycle = $data['motorcycle'];
+            $motorcycle = $data['motorcycle'] ?? [];
+            if (filled($motorcycle['plate'] ?? null) || filled($motorcycle['brand'] ?? null) || filled($motorcycle['line'] ?? null) || filled($motorcycle['model'] ?? null)) {
                 $person->motorcycles()->create([
-                    'plate' => $motorcycle['plate'],
-                    'brand' => $motorcycle['brand'] ?? 'Sin marca',
-                    'model' => $motorcycle['line'] ?? $motorcycle['model'] ?? null,
-                    'year' => $motorcycle['year'] ?? null,
-                    'color' => $motorcycle['color'] ?? null,
-                    'engine_displacement' => $motorcycle['engine_displacement'] ?? null,
-                    'vehicle_type' => $motorcycle['vehicle_type'] ?? 'motorcycle',
+                    'plate' => filled($motorcycle['plate'] ?? null) ? $motorcycle['plate'] : 'PENDIENTE',
+                    'brand' => filled($motorcycle['brand'] ?? null) ? $motorcycle['brand'] : 'Sin marca',
+                    'model' => $this->blankToNull($motorcycle['line'] ?? $motorcycle['model'] ?? null),
+                    'year' => $this->nullableInteger($motorcycle['year'] ?? null),
+                    'color' => $this->blankToNull($motorcycle['color'] ?? null),
+                    'engine_displacement' => $this->nullableInteger($motorcycle['engine_displacement'] ?? null),
+                    'vehicle_type' => filled($motorcycle['vehicle_type'] ?? null) ? $motorcycle['vehicle_type'] : 'motorcycle',
                     'status' => 'active',
                 ]);
             }
@@ -81,5 +83,44 @@ class CreatePersonAction
 
             return $person->load(['healthProfile', 'emergencyContacts', 'memberships']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $health
+     * @return array<string, mixed>|null
+     */
+    private function healthPayload(?array $health): ?array
+    {
+        if ($health === null) {
+            return null;
+        }
+
+        $payload = [
+            'eps' => $this->blankToNull($health['eps'] ?? null),
+            'blood_type' => $this->blankToNull($health['blood_type'] ?? null),
+            'rh' => $this->blankToNull($health['rh'] ?? null),
+            'weight_kg' => $this->nullableNumber($health['weight_kg'] ?? null),
+            'height_cm' => $this->nullableNumber($health['height_cm'] ?? null),
+            'special_treatment' => $this->blankToNull($health['special_treatment'] ?? null),
+            'medications' => $this->blankToNull($health['medications'] ?? null),
+            'allergies' => $this->blankToNull($health['allergies'] ?? null),
+        ];
+
+        return collect($payload)->contains(fn ($value) => filled($value)) ? $payload : null;
+    }
+
+    private function blankToNull(mixed $value): mixed
+    {
+        return filled($value) ? $value : null;
+    }
+
+    private function nullableNumber(mixed $value): mixed
+    {
+        return is_numeric($value) ? $value : null;
+    }
+
+    private function nullableInteger(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int) $value : null;
     }
 }

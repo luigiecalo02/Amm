@@ -19,7 +19,7 @@ const { can } = usePermissions();
         <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <article v-for="item in [
                 { label: 'Miembros activos', value: stats.members },
-                { label: 'Personas', value: stats.people },
+                { label: 'Compañeros de ruta', value: stats.people },
                 { label: 'Motocicletas', value: stats.motorcycles },
                 { label: 'Por vencer', value: stats.expiring },
             ]" :key="item.label" class="panel p-5">

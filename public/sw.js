@@ -1,0 +1,43 @@
+self.addEventListener('install', (event) => {
+    self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+    event.respondWith(fetch(event.request));
+});
+
+self.addEventListener('push', (event) => {
+    let payload = { title: 'AMM', body: '', url: '/' };
+
+    try {
+        payload = { ...payload, ...(event.data ? event.data.json() : {}) };
+    } catch (error) {
+        payload.body = event.data ? event.data.text() : '';
+    }
+
+    event.waitUntil(self.registration.showNotification(payload.title || 'AMM', {
+        body: payload.body || '',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        data: { url: payload.url || '/' },
+    }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const target = new URL(event.notification.data?.url || '/', self.location.origin).href;
+
+    event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        const existing = clients.find((client) => client.url === target);
+
+        if (existing) {
+            return existing.focus();
+        }
+
+        return self.clients.openWindow(target);
+    }));
+});

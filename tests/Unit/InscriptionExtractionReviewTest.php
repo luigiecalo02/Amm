@@ -149,4 +149,65 @@ class InscriptionExtractionReviewTest extends TestCase
         $this->assertSame('1047475332', $review['fields'][0]['registered']);
         $this->assertSame('1047475332', $review['fields'][0]['front']);
     }
+
+    public function test_a_mismatch_and_an_unread_field_can_choose_which_value_to_keep(): void
+    {
+        $review = (new InscriptionExtractionReview)->forLastAnalyzed(
+            [
+                'document_number' => '1047475332',
+                'first_name' => 'Luigie',
+                'last_name' => 'Calo',
+                'second_last_name' => 'Pérez',
+            ],
+            [
+                'cedula_front' => [
+                    'analyzed' => true,
+                    'extracted' => [
+                        'document_number' => '1047475332',
+                        'first_name' => 'ANA',
+                        'last_name' => 'CALO',
+                    ],
+                ],
+                'cedula_back' => [
+                    'analyzed' => true,
+                    'extracted' => ['document_number' => '1047475332'],
+                ],
+            ],
+            'cedula_back',
+        );
+
+        $name = collect($review['fields'])->firstWhere('key', 'first_name');
+        $this->assertSame('mismatch', $name['status']);
+        $this->assertSame(['registered', 'front'], array_column($name['choices'], 'source'));
+
+        $secondLastName = collect($review['fields'])->firstWhere('key', 'second_last_name');
+        $this->assertSame('unread', $secondLastName['status']);
+        $this->assertSame('registered', $secondLastName['choices'][0]['source']);
+        $this->assertSame('Pérez', $secondLastName['choices'][0]['value']);
+
+        $choice = (new InscriptionExtractionReview)->choice(
+            [
+                'document_number' => '1047475332',
+                'first_name' => 'Luigie',
+                'last_name' => 'Calo',
+                'second_last_name' => 'Pérez',
+            ],
+            [
+                'cedula_front' => [
+                    'analyzed' => true,
+                    'extracted' => ['first_name' => 'ANA', 'last_name' => 'CALO'],
+                ],
+                'cedula_back' => [
+                    'analyzed' => true,
+                    'extracted' => [],
+                ],
+            ],
+            'cedula_back',
+            'first_name',
+            'front',
+        );
+
+        $this->assertSame('ANA', $choice['value']);
+        $this->assertContains('first_name', $choice['paths']);
+    }
 }

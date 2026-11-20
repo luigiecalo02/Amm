@@ -8,7 +8,7 @@ import InscriptionWizardNav from '@/components/InscriptionWizardNav.vue';
 import type { ExtractionReview } from '@/components/InscriptionExtractionSummary.vue';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import type { PageProps } from '@/types';
-import { extractTextFromImage } from '@/lib/imageOcr';
+import { extractTextFromImage, cancelImageRead, warmupImageReader } from '@/lib/imageOcr';
 
 type Step = {
     key: string;
@@ -51,18 +51,30 @@ const page = usePage<PageProps>();
 const busy = ref(false);
 const reading = ref(false);
 const readingProgress = ref(0);
+const readingLabel = ref('Preparando la foto…');
 const selectedKey = ref<string | null>(null);
 const reviewOpen = ref(false);
+const keeping = ref(false);
+const holdReview = ref(false);
 const choiceGroup = ref<StepGroup | null>(null);
 const choiceStep = ref<Step | null>(null);
 const choiceMode = ref<'ask' | 'pick-side'>('ask');
 const infoGroup = ref<StepGroup | null>(null);
+const zoomedImage = ref<{ src: string; label: string } | null>(null);
 const storageKey = computed(() => `amm-inscription-step:${props.token}`);
 const selected = computed(() => props.steps.find((step) => step.key === selectedKey.value) ?? null);
+
+watch(selected, (step) => {
+    if (step?.analyze) {
+        warmupImageReader();
+    }
+});
+
 const captureOpen = computed(() => selected.value !== null);
 const choiceOpen = computed(() => choiceGroup.value !== null);
 const infoOpen = computed(() => infoGroup.value !== null);
-const anyModalOpen = computed(() => captureOpen.value || reviewOpen.value || choiceOpen.value || infoOpen.value);
+const zoomOpen = computed(() => zoomedImage.value !== null);
+const anyModalOpen = computed(() => captureOpen.value || reviewOpen.value || choiceOpen.value || infoOpen.value || zoomOpen.value);
 const infoReview = computed(() => (
     props.review && infoGroup.value && props.review.group === infoGroup.value.key
         ? props.review
@@ -88,7 +100,20 @@ const closeChoice = () => {
 };
 
 const closeInfo = () => {
+    zoomedImage.value = null;
     infoGroup.value = null;
+};
+
+const openZoom = (src: string | null | undefined, label: string) => {
+    if (!src) {
+        return;
+    }
+
+    zoomedImage.value = { src, label };
+};
+
+const closeZoom = () => {
+    zoomedImage.value = null;
 };
 
 const groupSides = (group: StepGroup): Step[] => (
@@ -147,6 +172,11 @@ const onCaptureKeydown = (event: KeyboardEvent) => {
         return;
     }
 
+    if (zoomOpen.value) {
+        closeZoom();
+        return;
+    }
+
     if (captureOpen.value) {
         closeCapture();
         return;
@@ -197,6 +227,11 @@ watch(anyModalOpen, (open) => lockBody(open));
 watch(
     () => [page.props.flash?.analyzed, props.review] as const,
     ([analyzed, review]) => {
+        if (holdReview.value) {
+            holdReview.value = false;
+            return;
+        }
+
         if (! review) {
             reviewOpen.value = false;
             return;
@@ -206,6 +241,21 @@ watch(
     },
     { immediate: true },
 );
+
+const keepField = (payload: { step: string; key: string; source: 'registered' | 'front' | 'back' | 'manual'; value?: string }) => {
+    holdReview.value = true;
+    keeping.value = true;
+    router.post(`/i/${props.token}/documentos/conservar`, payload, {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => {
+            keeping.value = false;
+            window.setTimeout(() => {
+                holdReview.value = false;
+            }, 0);
+        },
+    });
+};
 
 watch(
     () => props.steps,
@@ -219,6 +269,7 @@ watch(
 
 const percent = computed(() => Math.round((props.progress.done / props.progress.total) * 100));
 const fileError = computed(() => (page.props.errors as Record<string, string> | undefined)?.file ?? '');
+const documentError = computed(() => (page.props.errors as Record<string, string> | undefined)?.document_number ?? '');
 
 const groups = computed<StepGroup[]>(() => {
     const result: StepGroup[] = [];
@@ -319,10 +370,12 @@ const submit = async (file: File) => {
     if (selected.value.analyze && file.type.startsWith('image/')) {
         reading.value = true;
         readingProgress.value = 0;
+        readingLabel.value = 'Preparando la foto…';
 
         try {
-            ocrText = await extractTextFromImage(file, (percent) => {
+            ocrText = await extractTextFromImage(file, (percent, label) => {
                 readingProgress.value = percent;
+                readingLabel.value = label;
             });
         } catch {
             ocrText = '';
@@ -488,6 +541,29 @@ const submit = async (file: File) => {
 
         <Teleport to="body">
             <div
+                v-if="zoomedImage"
+                class="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4"
+                role="dialog"
+                aria-modal="true"
+                :aria-label="zoomedImage.label"
+                @click.self="closeZoom"
+            >
+                <section class="flex max-h-[96dvh] w-full max-w-5xl flex-col gap-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <p class="font-display text-2xl text-cream">{{ zoomedImage.label }}</p>
+                        <button type="button" class="btn-ghost" @click="closeZoom">Cerrar</button>
+                    </div>
+                    <img
+                        :src="zoomedImage.src"
+                        :alt="zoomedImage.label"
+                        class="mx-auto max-h-[82dvh] w-full rounded-2xl object-contain"
+                    />
+                </section>
+            </div>
+        </Teleport>
+
+        <Teleport to="body">
+            <div
                 v-if="infoGroup"
                 class="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-3 sm:items-center sm:p-6"
                 role="dialog"
@@ -507,19 +583,28 @@ const submit = async (file: File) => {
                     <div class="mb-4 grid gap-3 sm:grid-cols-2">
                         <figure v-if="infoGroup.front?.preview_url" class="rounded-xl border border-white/10 bg-black/20 p-2">
                             <figcaption class="mb-2 text-xs uppercase tracking-widest text-cream/50">Frente</figcaption>
-                            <img :src="infoGroup.front.preview_url" alt="Frente" class="mx-auto max-h-52 w-full rounded-lg object-contain" />
+                            <button type="button" class="block w-full" @click="openZoom(infoGroup.front.preview_url, 'Frente')">
+                                <img :src="infoGroup.front.preview_url" alt="Frente" class="mx-auto max-h-52 w-full rounded-lg object-contain" />
+                            </button>
                         </figure>
                         <figure v-if="infoGroup.back?.preview_url" class="rounded-xl border border-white/10 bg-black/20 p-2">
                             <figcaption class="mb-2 text-xs uppercase tracking-widest text-cream/50">Reverso</figcaption>
-                            <img :src="infoGroup.back.preview_url" alt="Reverso" class="mx-auto max-h-52 w-full rounded-lg object-contain" />
+                            <button type="button" class="block w-full" @click="openZoom(infoGroup.back.preview_url, 'Reverso')">
+                                <img :src="infoGroup.back.preview_url" alt="Reverso" class="mx-auto max-h-52 w-full rounded-lg object-contain" />
+                            </button>
                         </figure>
                         <figure v-if="infoGroup.single?.preview_url" class="rounded-xl border border-white/10 bg-black/20 p-2 sm:col-span-2">
                             <figcaption class="mb-2 text-xs uppercase tracking-widest text-cream/50">Archivo</figcaption>
-                            <img :src="infoGroup.single.preview_url" alt="Documento" class="mx-auto max-h-52 w-full rounded-lg object-contain" />
+                            <button type="button" class="block w-full" @click="openZoom(infoGroup.single.preview_url, 'Documento')">
+                                <img :src="infoGroup.single.preview_url" alt="Documento" class="mx-auto max-h-52 w-full rounded-lg object-contain" />
+                            </button>
                         </figure>
                     </div>
 
-                    <InscriptionExtractionSummary v-if="infoReview" :review="infoReview" />
+                    <p v-if="documentError" class="mb-3 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                        {{ documentError }}
+                    </p>
+                    <InscriptionExtractionSummary v-if="infoReview" :review="infoReview" :saving="keeping" @keep="keepField" />
                     <p v-else class="rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-cream/60">
                         No hay texto leído en este documento. Puedes cambiar las fotos si quieres volver a intentarlo.
                     </p>
@@ -545,7 +630,10 @@ const submit = async (file: File) => {
                     <div class="mb-4 flex justify-end">
                         <button type="button" class="btn-ghost" @click="closeReview">Cerrar</button>
                     </div>
-                    <InscriptionExtractionSummary :review="review" />
+                    <p v-if="documentError" class="mb-3 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                        {{ documentError }}
+                    </p>
+                    <InscriptionExtractionSummary :review="review" :saving="keeping" @keep="keepField" />
                     <div class="mt-5 grid gap-2 sm:grid-cols-2">
                         <Link :href="`/i/${token}/datos`" class="btn-ghost">Corregir datos iniciales</Link>
                         <button type="button" class="btn-primary" @click="closeReview">Continuar</button>
@@ -585,12 +673,18 @@ const submit = async (file: File) => {
 
                     <div v-if="parentPreview" class="mb-4 rounded-2xl border border-white/10 bg-black/20 p-3">
                         <p class="mb-2 text-xs uppercase tracking-widest text-cream/50">Foto principal</p>
-                        <img
+                        <button
                             v-if="parentPreview.preview_url"
-                            :src="parentPreview.preview_url"
-                            :alt="parentPreview.label"
-                            class="mx-auto max-h-40 w-full max-w-md rounded-xl object-contain"
-                        />
+                            type="button"
+                            class="block w-full"
+                            @click="openZoom(parentPreview.preview_url, parentPreview.label)"
+                        >
+                            <img
+                                :src="parentPreview.preview_url"
+                                :alt="parentPreview.label"
+                                class="mx-auto max-h-40 w-full max-w-md rounded-xl object-contain"
+                            />
+                        </button>
                         <div class="mt-3 border-l-2 border-ember-400 pl-3">
                             <p class="text-sm font-medium">Reverso anidado</p>
                             <p class="text-xs text-cream/50">Esta cara queda unida a la foto principal.</p>
@@ -608,10 +702,12 @@ const submit = async (file: File) => {
                         :processing="busy"
                         :reading="reading"
                         :reading-progress="readingProgress"
+                        :reading-label="readingLabel"
                         :icon="selected.icon"
                         :frame="selected.frame"
                         :label="selected.label"
                         @submit="submit"
+                        @skip="cancelImageRead"
                     />
                 </section>
             </div>

@@ -13,7 +13,6 @@ use App\Models\Organization;
 use App\Models\Person;
 use App\Services\Documents\DocumentService;
 use App\Services\Inscriptions\InscriptionLinkService;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -24,14 +23,13 @@ class SubmitPublicInscriptionAction
         private readonly CreatePersonAction $createPerson,
         private readonly DocumentService $documents,
         private readonly InscriptionLinkService $links,
-    ) {
-    }
+    ) {}
 
     public function execute(InscriptionApplication $application, Organization $organization, array $data): Person
     {
-        if (Person::query()->where('document_number', $data['document_number'])->exists()) {
+        if ($this->links->registeredPerson((string) ($data['document_number'] ?? '')) !== null) {
             throw ValidationException::withMessages([
-                'document_number' => 'Ya existe una persona con esa cédula. Pide revisión al club.',
+                'document_number' => InscriptionLinkService::DOCUMENT_ALREADY_REGISTERED,
             ]);
         }
 
@@ -52,11 +50,12 @@ class SubmitPublicInscriptionAction
             ]);
 
             $motorcycle = $person->motorcycles()->first();
-            $this->attachUploadedDocuments($application, $organization, $person, $motorcycle?->id, $data);
+            $this->attachUploadedDocuments($application, $person, $motorcycle?->id, $data);
 
             $application->forceFill([
                 'person_id' => $person->id,
                 'email' => $data['email'] ?? $application->email,
+                'document_number' => $this->links->normalizeDocumentNumber((string) ($data['document_number'] ?? '')),
                 'form_draft' => $data,
                 'status' => InscriptionApplicationStatus::Submitted,
                 'submitted_at' => now(),
@@ -71,7 +70,6 @@ class SubmitPublicInscriptionAction
 
     private function attachUploadedDocuments(
         InscriptionApplication $application,
-        Organization $organization,
         Person $person,
         ?string $motorcycleId,
         array $data,
@@ -81,6 +79,31 @@ class SubmitPublicInscriptionAction
             ->whereIn('slug', ['cedula', 'licencia', 'tarjeta-propiedad', 'soat', 'tecnomecanica'])
             ->get()
             ->keyBy('slug');
+
+        $vehicleUploads = array_values(array_filter([
+            $uploads['tarjeta_propiedad_front'] ?? $uploads['tarjeta_propiedad'] ?? null,
+            $uploads['tarjeta_propiedad_back'] ?? null,
+            $uploads['soat'] ?? null,
+            $uploads['tecnomecanica'] ?? null,
+        ]));
+
+        if (! $motorcycleId && $vehicleUploads !== []) {
+            $motorcycle = $person->motorcycles()->create([
+                'plate' => filled($data['motorcycle']['plate'] ?? null) ? $data['motorcycle']['plate'] : 'PENDIENTE',
+                'brand' => filled($data['motorcycle']['brand'] ?? null) ? $data['motorcycle']['brand'] : 'Sin marca',
+                'model' => filled($data['motorcycle']['line'] ?? $data['motorcycle']['model'] ?? null)
+                    ? ($data['motorcycle']['line'] ?? $data['motorcycle']['model'])
+                    : null,
+                'year' => is_numeric($data['motorcycle']['year'] ?? null) ? (int) $data['motorcycle']['year'] : null,
+                'color' => filled($data['motorcycle']['color'] ?? null) ? $data['motorcycle']['color'] : null,
+                'engine_displacement' => is_numeric($data['motorcycle']['engine_displacement'] ?? null)
+                    ? (int) $data['motorcycle']['engine_displacement']
+                    : null,
+                'vehicle_type' => filled($data['motorcycle']['vehicle_type'] ?? null) ? $data['motorcycle']['vehicle_type'] : 'motorcycle',
+                'status' => 'active',
+            ]);
+            $motorcycleId = $motorcycle->id;
+        }
 
         $groups = [
             'cedula' => [
@@ -116,14 +139,17 @@ class SubmitPublicInscriptionAction
 
         foreach ($groups as $slug => $group) {
             $type = $types->get($slug);
-            $files = $group['files'];
+            $files = array_values(array_filter(
+                $group['files'],
+                fn ($file) => is_array($file) && is_string($file['path'] ?? null) && Storage::disk('scans')->exists($file['path']),
+            ));
             $payload = $group['payload'];
 
             if (! $type || $files === []) {
                 continue;
             }
 
-            if (isset($payload['motorcycle_id']) && ! $payload['motorcycle_id']) {
+            if (array_key_exists('motorcycle_id', $payload) && ! $payload['motorcycle_id']) {
                 continue;
             }
 
@@ -137,24 +163,14 @@ class SubmitPublicInscriptionAction
             ]);
 
             foreach ($files as $file) {
-                $this->copyScanToDocument($document, $file);
+                $this->documents->copyFromDisk(
+                    $document,
+                    'scans',
+                    $file['path'],
+                    $file['filename'] ?? basename($file['path']),
+                    $file['mime'] ?? null,
+                );
             }
         }
-    }
-
-    /**
-     * @param  array{path?: string, filename?: string, mime?: string}  $file
-     */
-    private function copyScanToDocument(Document $document, array $file): void
-    {
-        $path = $file['path'] ?? null;
-
-        if (! $path || ! Storage::disk('scans')->exists($path)) {
-            return;
-        }
-
-        $absolute = Storage::disk('scans')->path($path);
-        $uploaded = new UploadedFile($absolute, $file['filename'] ?? basename($path), $file['mime'] ?? null, null, true);
-        $this->documents->storeFile($document, $uploaded);
     }
 }

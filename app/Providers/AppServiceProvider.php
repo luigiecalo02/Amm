@@ -9,9 +9,12 @@ use App\Events\PersonCreated;
 use App\Events\UserAssignedToOrganization;
 use App\Listeners\WriteAuditLog;
 use App\Models\Document;
+use App\Models\Motorcycle;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\Person;
+use App\Models\Role;
+use App\Models\User;
 use App\Policies\DocumentPolicy;
 use App\Policies\MotorcyclePolicy;
 use App\Policies\OrganizationMemberPolicy;
@@ -50,15 +53,16 @@ class AppServiceProvider extends ServiceProvider
             'person' => Person::class,
             'member' => OrganizationMember::class,
             'document' => Document::class,
+            'user' => User::class,
         ]);
 
         Gate::policy(Organization::class, OrganizationPolicy::class);
         Gate::policy(Person::class, PersonPolicy::class);
         Gate::policy(OrganizationMember::class, OrganizationMemberPolicy::class);
         Gate::policy(Document::class, DocumentPolicy::class);
-        Gate::policy(\App\Models\Motorcycle::class, MotorcyclePolicy::class);
-        Gate::policy(\App\Models\Role::class, RolePolicy::class);
-        Gate::policy(\App\Models\User::class, UserPolicy::class);
+        Gate::policy(Motorcycle::class, MotorcyclePolicy::class);
+        Gate::policy(Role::class, RolePolicy::class);
+        Gate::policy(User::class, UserPolicy::class);
 
         Gate::before(function ($user, string $ability) {
             if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
@@ -119,7 +123,7 @@ class AppServiceProvider extends ServiceProvider
         Route::bind('document', function (string $value, $route) use ($resolveOrganization) {
             $organization = $resolveOrganization($route);
 
-            return \App\Models\Document::query()
+            return Document::query()
                 ->when($organization, fn ($query) => $query->inOrganization($organization->id))
                 ->whereKey($value)
                 ->firstOrFail();
@@ -128,7 +132,7 @@ class AppServiceProvider extends ServiceProvider
         Route::bind('role', function (string $value, $route) use ($resolveOrganization) {
             $organization = $resolveOrganization($route);
 
-            return \App\Models\Role::query()
+            return Role::query()
                 ->when($organization, fn ($query) => $query->forOrganization($organization->id))
                 ->whereKey($value)
                 ->firstOrFail();

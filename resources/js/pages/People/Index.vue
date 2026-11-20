@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
+import MemberAvatar from '@/components/MemberAvatar.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { useOrganization } from '@/composables/useOrganization';
@@ -23,7 +24,7 @@ const search = () => {
     <AppLayout>
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-                <p class="text-xs uppercase tracking-widest text-ember-400">Personas</p>
+                <p class="text-xs uppercase tracking-widest text-ember-400">Compañeros de ruta</p>
                 <h1 class="font-display text-3xl">Miembros y conductores</h1>
             </div>
             <Link v-if="can('people.create')" :href="clubPath('people/create')" class="btn-primary">Nueva inscripción</Link>
@@ -38,11 +39,14 @@ const search = () => {
                 v-for="person in people.data"
                 :key="person.id"
                 :href="clubPath(`people/${person.id}`)"
-                class="panel p-4"
+                class="panel flex items-center gap-4 p-4"
             >
-                <p class="font-display text-xl">{{ person.first_name }} {{ person.last_name }}</p>
-                <p class="text-sm text-cream/50">{{ person.document_type?.toUpperCase() }} {{ person.document_number }}</p>
-                <p class="mt-2 text-sm text-cream/70">{{ person.phone }} · {{ person.city }}</p>
+                <MemberAvatar :src="person.photo_url" :alt="`${person.first_name} ${person.last_name}`" class="h-16 w-16 shrink-0" />
+                <div class="min-w-0">
+                    <p class="font-display text-xl">{{ person.first_name }} {{ person.last_name }}</p>
+                    <p class="text-sm text-cream/50">{{ person.document_type?.toUpperCase() }} {{ person.document_number }}</p>
+                    <p class="mt-2 text-sm text-cream/70">{{ person.phone }} · {{ person.city }}</p>
+                </div>
             </Link>
         </div>
     </AppLayout>

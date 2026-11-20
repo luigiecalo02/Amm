@@ -30,7 +30,8 @@ export default defineConfig({
         }),
         VitePWA({
             registerType: 'autoUpdate',
-            includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
+            injectRegister: false,
+            includeAssets: ['favicon.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-512-maskable.png'],
             manifest: {
                 name: 'AMM Clubes',
                 short_name: 'AMM',
@@ -47,12 +48,19 @@ export default defineConfig({
                         src: '/icons/icon-192.png',
                         sizes: '192x192',
                         type: 'image/png',
+                        purpose: 'any',
                     },
                     {
                         src: '/icons/icon-512.png',
                         sizes: '512x512',
                         type: 'image/png',
-                        purpose: 'any maskable',
+                        purpose: 'any',
+                    },
+                    {
+                        src: '/icons/icon-512-maskable.png',
+                        sizes: '512x512',
+                        type: 'image/png',
+                        purpose: 'maskable',
                     },
                 ],
             },

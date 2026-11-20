@@ -20,6 +20,7 @@ class InscriptionApplication extends Model
         'status',
         'reference',
         'email',
+        'document_number',
         'extracted_data',
         'form_draft',
         'uploads',
@@ -78,5 +79,56 @@ class InscriptionApplication extends Model
     public function isPendingReview(): bool
     {
         return $this->status === InscriptionApplicationStatus::Submitted;
+    }
+
+    public function isOpen(): bool
+    {
+        return in_array($this->status, [
+            InscriptionApplicationStatus::Draft,
+            InscriptionApplicationStatus::ReadyForForm,
+            InscriptionApplicationStatus::Submitted,
+        ], true);
+    }
+
+    public function hasStarted(): bool
+    {
+        if ($this->person_id || $this->status !== InscriptionApplicationStatus::Draft) {
+            return true;
+        }
+
+        $draft = $this->form_draft ?? [];
+
+        return filled($draft['first_name'] ?? null)
+            || filled($draft['last_name'] ?? null)
+            || filled($draft['document_number'] ?? null)
+            || filled($this->email)
+            || filled($this->uploads);
+    }
+
+    public function displayName(): string
+    {
+        $personName = trim(collect([
+            $this->person?->first_name,
+            $this->person?->last_name,
+        ])->filter()->implode(' '));
+
+        if ($personName !== '') {
+            return $personName;
+        }
+
+        $draftName = trim(collect([
+            $this->form_draft['first_name'] ?? null,
+            $this->form_draft['last_name'] ?? null,
+        ])->filter()->implode(' '));
+
+        if ($draftName !== '') {
+            return $draftName;
+        }
+
+        if (filled($this->email)) {
+            return (string) $this->email;
+        }
+
+        return 'Solicitud en proceso';
     }
 }

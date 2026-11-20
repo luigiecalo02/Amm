@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\MembershipStatus;
 use App\Enums\PersonStatus;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -102,5 +103,21 @@ class Person extends Model
         return $this->memberships()
             ->where('organization_id', $organizationId)
             ->exists();
+    }
+
+    public function isActiveIn(string $organizationId): bool
+    {
+        if ($this->status !== PersonStatus::Active) {
+            return false;
+        }
+
+        $memberships = $this->relationLoaded('memberships')
+            ? $this->memberships
+            : $this->memberships()->where('organization_id', $organizationId)->get();
+
+        return $memberships->contains(
+            fn ($membership): bool => $membership->organization_id === $organizationId
+                && $membership->status === MembershipStatus::Active
+        );
     }
 }

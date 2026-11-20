@@ -19,6 +19,9 @@ type ApplicationItem = {
     status: string;
     reference?: string | null;
     email?: string | null;
+    display_name?: string | null;
+    document_number?: string | null;
+    can_delete?: boolean;
     submitted_at?: string | null;
     person?: { first_name?: string; last_name?: string; document_number?: string } | null;
 };
@@ -52,8 +55,18 @@ const remove = (item: LinkItem) => {
     router.delete(clubPath(`inscripciones/links/${item.id}`), { preserveScroll: true });
 };
 
+const removeApplication = (application: ApplicationItem) => {
+    const name = application.display_name || application.document_number || 'esta solicitud';
+
+    if (! window.confirm(`¿Borrar la solicitud abierta de ${name}? Esta acción no se puede deshacer.`)) {
+        return;
+    }
+
+    router.delete(clubPath(`inscripciones/${application.id}`), { preserveScroll: true });
+};
+
 const statusLabel: Record<string, string> = {
-    draft: 'Cargando',
+    draft: 'Borrador',
     ready_for_form: 'En formulario',
     submitted: 'Por verificar',
     verified: 'Verificada',
@@ -98,21 +111,33 @@ const statusLabel: Record<string, string> = {
 
         <section class="space-y-3">
             <h2 class="font-display text-xl">Solicitudes</h2>
-            <Link
+            <article
                 v-for="application in applications"
                 :key="application.id"
-                :href="clubPath(`inscripciones/${application.id}`)"
-                class="panel block p-4"
+                class="panel flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between"
             >
-                <p class="font-medium">
-                    {{ application.person?.first_name }} {{ application.person?.last_name }}
-                    <span class="text-sm text-cream/50">{{ application.email }}</span>
-                </p>
-                <p class="text-xs uppercase text-ember-400">
-                    {{ statusLabel[application.status] ?? application.status }}
-                    <span v-if="application.reference"> · {{ application.reference }}</span>
-                </p>
-            </Link>
+                <Link :href="clubPath(`inscripciones/${application.id}`)" class="min-w-0 flex-1">
+                    <p class="font-medium">
+                        {{ application.display_name || `${application.person?.first_name ?? ''} ${application.person?.last_name ?? ''}`.trim() || 'Solicitud en proceso' }}
+                        <span v-if="application.email" class="text-sm text-cream/50">{{ application.email }}</span>
+                    </p>
+                    <p class="text-xs uppercase text-ember-400">
+                        {{ statusLabel[application.status] ?? application.status }}
+                        <span v-if="application.document_number || application.person?.document_number">
+                            · {{ application.document_number || application.person?.document_number }}
+                        </span>
+                        <span v-if="application.reference"> · {{ application.reference }}</span>
+                    </p>
+                </Link>
+                <button
+                    v-if="canVerify && application.can_delete"
+                    class="btn-ghost"
+                    type="button"
+                    @click="removeApplication(application)"
+                >
+                    Borrar
+                </button>
+            </article>
             <p v-if="!applications.length" class="text-sm text-cream/50">Nadie se ha inscrito por enlace todavía.</p>
         </section>
     </AppLayout>

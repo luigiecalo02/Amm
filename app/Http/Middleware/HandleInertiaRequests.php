@@ -45,6 +45,8 @@ class HandleInertiaRequests extends Middleware
             'can_switch_clubs' => $user?->canSwitchClubs() ?? false,
             'permissions' => $user && $organization ? $user->permissionSlugs($organization) : [],
             'googleEnabled' => filled(config('services.google.client_id')),
+            'vapidPublicKey' => config('services.webpush.public_key'),
+            'notifications' => $this->notifications($user),
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),
@@ -84,6 +86,31 @@ class HandleInertiaRequests extends Middleware
         }
 
         return null;
+    }
+
+    /**
+     * @return array{unread_count: int, items: list<array{id: string, title: string, body: string, url: string}>}
+     */
+    private function notifications(?User $user): array
+    {
+        if (! $user) {
+            return ['unread_count' => 0, 'items' => []];
+        }
+
+        return [
+            'unread_count' => $user->unreadNotifications()->count(),
+            'items' => $user->unreadNotifications()
+                ->latest()
+                ->limit(8)
+                ->get()
+                ->map(fn ($notification): array => [
+                    'id' => (string) $notification->id,
+                    'title' => (string) ($notification->data['title'] ?? 'Aviso'),
+                    'body' => (string) ($notification->data['body'] ?? ''),
+                    'url' => (string) ($notification->data['url'] ?? '/'),
+                ])
+                ->all(),
+        ];
     }
 
     /**

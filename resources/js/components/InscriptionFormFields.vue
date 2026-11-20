@@ -8,11 +8,17 @@ const props = defineProps<{
     pilots?: { id: string; name: string; document_number?: string | null }[];
     role?: string;
     step: string;
+    plain?: boolean;
 }>();
 
 const mark = (key: string) => (props.filled ?? []).includes(key);
 const isPassenger = computed(() => props.role === 'passenger');
 const show = (key: string) => props.step === 'all' || props.step === key;
+const sectionClass = computed(() => (
+    props.plain
+        ? 'grid gap-3 md:grid-cols-2'
+        : 'panel grid gap-3 p-5 md:grid-cols-2'
+));
 
 const addCategory = () => {
     if (!Array.isArray(props.form.license_categories)) {
@@ -32,9 +38,9 @@ watch(
 </script>
 
 <template>
-    <section v-show="show('identity')" class="panel grid gap-3 p-5 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2">Identidad</h2>
-        <FormField label="Nombres">
+    <section v-show="show('identity')" :class="sectionClass">
+        <h2 v-if="!plain" class="font-display text-xl md:col-span-2">Identidad</h2>
+        <FormField label="Nombre">
             <input v-model="form.first_name" class="field" :class="{ 'ring-1 ring-ember-400': mark('first_name') }" />
         </FormField>
         <FormField label="Segundo nombre">
@@ -62,8 +68,8 @@ watch(
         </FormField>
     </section>
 
-    <section v-show="show('contact')" class="panel grid gap-3 p-5 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2">Contacto y residencia</h2>
+    <section v-show="show('contact')" :class="sectionClass">
+        <h2 v-if="!plain" class="font-display text-xl md:col-span-2">Contacto y residencia</h2>
         <FormField label="Fecha de nacimiento">
             <input v-model="form.birth_date" type="date" class="field" :class="{ 'ring-1 ring-ember-400': mark('birth_date') }" />
         </FormField>
@@ -108,8 +114,8 @@ watch(
         </FormField>
     </section>
 
-    <section v-show="show('church')" class="panel grid gap-3 p-5 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2">Iglesia</h2>
+    <section v-show="show('church')" :class="sectionClass">
+        <h2 v-if="!plain" class="font-display text-xl md:col-span-2">Iglesia</h2>
         <FormField label="Iglesia a la que pertenece">
             <input v-model="form.metadata.church_name" class="field" />
         </FormField>
@@ -130,8 +136,8 @@ watch(
         </FormField>
     </section>
 
-    <section v-show="show('health')" class="panel grid gap-3 p-5 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2">Salud</h2>
+    <section v-show="show('health')" :class="sectionClass">
+        <h2 v-if="!plain" class="font-display text-xl md:col-span-2">Salud</h2>
         <FormField label="EPS">
             <input v-model="form.health.eps" class="field" />
         </FormField>
@@ -181,9 +187,9 @@ watch(
         </FormField>
     </section>
 
-    <section v-show="show('pilot') && isPassenger" class="panel grid gap-3 p-5 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2">Piloto</h2>
-        <p class="text-sm text-cream/60 md:col-span-2">
+    <section v-show="show('pilot') && isPassenger" :class="sectionClass">
+        <h2 v-if="!plain" class="font-display text-xl md:col-span-2">Piloto</h2>
+        <p v-if="!plain" class="text-sm text-cream/60 md:col-span-2">
             Al completar el formulario debes elegir un piloto ya inscrito en el club.
         </p>
         <FormField label="Piloto" span>
@@ -199,8 +205,8 @@ watch(
         </p>
     </section>
 
-    <section v-show="show('license') && !isPassenger" class="panel grid gap-3 p-5 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2">Licencia de conducción</h2>
+    <section v-show="show('license') && !isPassenger" :class="sectionClass">
+        <h2 v-if="!plain" class="font-display text-xl md:col-span-2">Licencia de conducción</h2>
         <FormField label="Identificación de la licencia">
             <input v-model="form.license_document_number" class="field" :class="{ 'ring-1 ring-ember-400': mark('license_document_number') }" />
         </FormField>
@@ -221,8 +227,8 @@ watch(
         </div>
     </section>
 
-    <section v-show="show('vehicle') && !isPassenger" class="panel grid gap-3 p-5 md:grid-cols-2">
-        <h2 class="font-display text-xl md:col-span-2">Vehículo</h2>
+    <section v-show="show('vehicle') && !isPassenger" :class="sectionClass">
+        <h2 v-if="!plain" class="font-display text-xl md:col-span-2">Vehículo</h2>
         <FormField label="Tipo de vehículo">
             <select v-model="form.motorcycle.vehicle_type" class="field">
                 <option value="motorcycle">Moto</option>

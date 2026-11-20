@@ -7,10 +7,8 @@ use App\Jobs\ProcessDocumentScanJob;
 use App\Models\Document;
 use App\Models\DocumentFile;
 use App\Models\DocumentScan;
-use App\Models\DocumentType;
-use App\Models\Motorcycle;
 use App\Models\Organization;
-use App\Models\Person;
+use App\Services\Documents\DocumentLibrary;
 use App\Services\Documents\DocumentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,30 +18,17 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DocumentController extends Controller
 {
-    public function __construct(private readonly DocumentService $documents)
-    {
-    }
+    public function __construct(private readonly DocumentService $documents) {}
 
-    public function index(Request $request, Organization $organization): Response
+    public function index(Organization $organization, DocumentLibrary $library): Response
     {
         $this->authorize('viewAny', [Document::class, $organization]);
 
-        $documents = Document::query()
-            ->inOrganization($organization->id)
-            ->with(['type', 'person', 'motorcycle', 'files'])
-            ->when($request->string('q')->toString(), function ($query, string $search): void {
-                $query->where('document_number', 'like', "%{$search}%");
-            })
-            ->latest()
-            ->paginate(15)
-            ->withQueryString();
+        $canDownload = request()->user()?->hasPermission('documents.download', $organization) ?? false;
 
         return Inertia::render('Documents/Index', [
-            'documents' => $documents,
-            'documentTypes' => DocumentType::query()->where('active', true)->orderBy('name')->get(),
-            'people' => Person::query()->inOrganization($organization->id)->orderBy('last_name')->get(['id', 'first_name', 'last_name']),
-            'motorcycles' => Motorcycle::query()->inOrganization($organization->id)->with('person:id,first_name,last_name')->get(['id', 'person_id', 'plate', 'brand']),
-            'filters' => ['q' => $request->string('q')->toString()],
+            ...$library->forOrganization($organization, $canDownload),
+            'canDownload' => $canDownload,
         ]);
     }
 

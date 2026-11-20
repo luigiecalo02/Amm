@@ -35,7 +35,7 @@ const submit = () => form.post('/organizations');
         <div class="mx-auto max-w-5xl">
             <header class="mb-8 flex items-center justify-between gap-4">
                 <div class="flex items-center gap-4">
-                    <img src="/images/amm-logo.png" alt="AMM" class="h-16 w-16 rounded-full bg-white object-contain p-1" />
+                    <img src="/images/amm-logo.png" alt="AMM" class="h-16 w-16 object-contain" />
                     <div>
                         <p class="font-display text-xs uppercase tracking-[0.3em] text-ember-400">
                             {{ page.props.current_role?.name ?? 'AMM' }}

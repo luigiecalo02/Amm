@@ -6,8 +6,8 @@ use App\Models\InscriptionApplication;
 use App\Models\Organization;
 use App\Models\OrganizationMember;
 use App\Models\Person;
+use App\Services\Inscriptions\InscriptionLinkService;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class UpdatePendingInscriptionRequest extends FormRequest
@@ -71,12 +71,7 @@ class UpdatePendingInscriptionRequest extends FormRequest
     {
         return [
             'document_type' => ['required', 'string', 'max:20'],
-            'document_number' => [
-                'required',
-                'string',
-                'max:40',
-                Rule::unique('people', 'document_number')->ignore($this->personBeingUpdated()?->id),
-            ],
+            'document_number' => ['required', 'string', 'max:40'],
             'document_issued_in' => ['nullable', 'string', 'max:80'],
             'first_name' => ['required', 'string', 'max:80'],
             'middle_name' => ['nullable', 'string', 'max:80'],
@@ -152,6 +147,13 @@ class UpdatePendingInscriptionRequest extends FormRequest
                 if (! $exists) {
                     $validator->errors()->add('pilot_person_id', 'Elige un piloto ya inscrito en este club.');
                 }
+            }
+
+            $taken = app(InscriptionLinkService::class)->registeredPerson((string) $this->input('document_number'));
+            $current = $this->personBeingUpdated();
+
+            if ($taken !== null && $taken->id !== $current?->id) {
+                $validator->errors()->add('document_number', InscriptionLinkService::DOCUMENT_ALREADY_REGISTERED);
             }
         });
     }

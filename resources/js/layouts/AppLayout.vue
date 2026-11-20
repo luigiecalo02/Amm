@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
+import NotificationBell from '@/components/NotificationBell.vue';
 import { usePermissions } from '@/composables/usePermissions';
 import { useOrganization } from '@/composables/useOrganization';
 import type { PageProps } from '@/types';
@@ -15,7 +16,9 @@ const items = computed(() => {
 
     return [
         { href: `/app/${slug.value}`, label: 'Club', show: true },
-        { href: `/app/${slug.value}/people`, label: 'Personas', show: can('people.view') },
+        { href: `/app/${slug.value}/perfil`, label: 'Mi perfil', show: true },
+        { href: `/app/${slug.value}/mis-documentos`, label: 'Mis documentos', show: true },
+        { href: `/app/${slug.value}/people`, label: 'Compañeros de ruta', show: can('people.view') },
         { href: `/app/${slug.value}/members`, label: 'Miembros', show: can('members.view') },
         { href: `/app/${slug.value}/motorcycles`, label: 'Motos', show: can('motorcycles.view') },
         { href: `/app/${slug.value}/documents`, label: 'Documentos', show: can('documents.view') },
@@ -39,6 +42,7 @@ const items = computed(() => {
                     <h1 class="font-display text-lg leading-none">{{ organization?.name ?? 'Plataforma' }}</h1>
                 </div>
                 <div class="flex items-center gap-3 text-sm">
+                    <NotificationBell v-if="page.props.auth.user" />
                     <Link v-if="page.props.can_switch_clubs" href="/organizations" class="text-cream/60 hover:text-cream">Clubes</Link>
                     <form method="post" action="/logout">
                         <input type="hidden" name="_token" :value="page.props.csrf_token || ''" />

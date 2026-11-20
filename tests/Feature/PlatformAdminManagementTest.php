@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\Permissions\PermissionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class PlatformAdminManagementTest extends TestCase
@@ -64,5 +65,58 @@ class PlatformAdminManagementTest extends TestCase
                 ->where('role_id', $secretary->id)
                 ->exists()
         );
+    }
+
+    public function test_an_admin_can_change_the_email_and_password_used_to_sign_in(): void
+    {
+        $permissions = app(PermissionService::class);
+        $permissions->syncCatalog();
+
+        $club = Organization::factory()->create(['slug' => 'amm-acceso']);
+        $permissions->createOrganizationRoles($club);
+
+        $admin = User::factory()->create(['is_platform_admin' => true]);
+        $member = User::factory()->create(['email' => 'antes@amm.test']);
+        $role = Role::query()->where('organization_id', $club->id)->where('slug', 'miembro')->firstOrFail();
+        $permissions->assignRole($club, $member, $role);
+
+        $this->actingAs($admin)
+            ->put("/app/{$club->slug}/users/{$member->id}", [
+                'role_id' => $role->id,
+                'email' => 'nuevo@amm.test',
+                'password' => '',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $member->refresh();
+        $this->assertSame('nuevo@amm.test', $member->email);
+        $this->assertTrue(Hash::check('password', $member->password));
+
+        $this->actingAs($admin)
+            ->put("/app/{$club->slug}/users/{$member->id}", [
+                'role_id' => $role->id,
+                'email' => 'nuevo@amm.test',
+                'password' => 'clave-nueva',
+            ])
+            ->assertRedirect();
+
+        $this->post('/logout');
+        $this->post('/login', [
+            'email' => 'nuevo@amm.test',
+            'password' => 'clave-nueva',
+        ])->assertRedirect();
+        $this->assertAuthenticatedAs($member);
+
+        $other = User::factory()->create(['email' => 'ocupado@amm.test']);
+        $permissions->assignRole($club, $other, $role);
+
+        $this->actingAs($admin)
+            ->put("/app/{$club->slug}/users/{$member->id}", [
+                'role_id' => $role->id,
+                'email' => 'ocupado@amm.test',
+                'password' => '123',
+            ])
+            ->assertSessionHasErrors(['email', 'password']);
     }
 }

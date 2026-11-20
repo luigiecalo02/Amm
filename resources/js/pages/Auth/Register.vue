@@ -41,7 +41,7 @@ const submit = () => form.post('/registro');
     <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#243044,_#07090D_60%)] px-4 py-10">
         <div class="mx-auto w-full max-w-3xl panel p-6 md:p-8">
             <div class="flex items-center gap-4">
-                <img src="/images/amm-logo.png" alt="AMM" class="h-20 w-20 rounded-full bg-white object-contain p-1" />
+                <img src="/images/amm-logo.png" alt="AMM" class="h-20 w-20 object-contain" />
                 <div>
                     <p class="font-display text-xs uppercase tracking-[0.3em] text-ember-400">Inscripción</p>
                     <h1 class="font-display text-3xl">Completa tus datos</h1>

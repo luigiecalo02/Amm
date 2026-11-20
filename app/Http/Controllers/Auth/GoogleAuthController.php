@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\Auth\AuthenticatedHome;
 use App\Services\Auth\GoogleAuthService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -42,19 +43,6 @@ class GoogleAuthController extends Controller
         Auth::login($user, true);
         $request->session()->regenerate();
 
-        if ($user->isSuperAdmin()) {
-            return redirect()->route('organizations.index');
-        }
-
-        if (! $user->person_id && ! $user->organizationRoles()->exists()) {
-            return redirect()->route('register.member');
-        }
-
-        $organization = $user->currentOrganization
-            ?? $user->organizationRoles()->with('organization')->first()?->organization;
-
-        return $organization
-            ? redirect()->route('dashboard', $organization)
-            : redirect()->route('organizations.index');
+        return redirect()->to(app(AuthenticatedHome::class)->url($user));
     }
 }

@@ -17,9 +17,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class DocumentService
 {
-    public function __construct(private readonly DocumentValidationService $validator)
-    {
-    }
+    public function __construct(private readonly DocumentValidationService $validator) {}
 
     public function create(Organization $organization, array $data, ?UploadedFile $file = null, ?User $actor = null): Document
     {
@@ -90,7 +88,26 @@ class DocumentService
         }
     }
 
-    public function storeFile(Document $document, UploadedFile $file): DocumentFile
+    public function replaceFileOnSide(Document $document, UploadedFile $file, ?string $side): void
+    {
+        if ($side === null || $side === '') {
+            $this->replaceFiles($document, [$file]);
+
+            return;
+        }
+
+        $document->load('files');
+        $existing = $this->fileOnSide($document, $side);
+
+        if ($existing) {
+            Storage::disk($existing->disk)->delete($existing->path);
+            $existing->delete();
+        }
+
+        $this->storeFile($document, $file, $side);
+    }
+
+    public function storeFile(Document $document, UploadedFile $file, ?string $side = null): DocumentFile
     {
         $disk = (string) config('filesystems.default', 'documents');
         $path = $file->store($document->id, $disk);
@@ -99,9 +116,63 @@ class DocumentService
             'disk' => $disk,
             'path' => $path,
             'filename' => $file->getClientOriginalName(),
+            'side' => $side,
             'mime_type' => $file->getClientMimeType() ?: 'application/octet-stream',
             'size' => $file->getSize() ?: 0,
             'checksum' => hash_file('sha256', $file->getRealPath() ?: $file->getPathname()),
+            'created_at' => now(),
+        ]);
+    }
+
+    private function fileOnSide(Document $document, string $side): ?DocumentFile
+    {
+        $labeled = $document->files->first(fn (DocumentFile $file): bool => $file->side === $side);
+
+        if ($labeled) {
+            return $labeled;
+        }
+
+        $unlabeled = $document->files
+            ->filter(fn (DocumentFile $file): bool => ! filled($file->side))
+            ->values();
+
+        return match ($side) {
+            'front' => $unlabeled->get(0),
+            'back' => $unlabeled->get(1),
+            default => null,
+        };
+    }
+
+    public function copyFromDisk(
+        Document $document,
+        string $fromDisk,
+        string $fromPath,
+        string $filename,
+        ?string $mime = null,
+    ): ?DocumentFile {
+        if (! Storage::disk($fromDisk)->exists($fromPath)) {
+            return null;
+        }
+
+        $contents = Storage::disk($fromDisk)->get($fromPath);
+
+        if ($contents === null || $contents === '') {
+            return null;
+        }
+
+        $disk = (string) config('filesystems.default', 'documents');
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $path = $document->id.'/'.uniqid('doc', true).($extension !== '' ? '.'.$extension : '');
+
+        Storage::disk($disk)->put($path, $contents);
+
+        return $document->files()->create([
+            'disk' => $disk,
+            'path' => $path,
+            'filename' => $filename !== '' ? $filename : basename($fromPath),
+            'mime_type' => $mime ?: 'application/octet-stream',
+            'size' => strlen($contents),
+            'checksum' => hash('sha256', $contents),
             'created_at' => now(),
         ]);
     }
@@ -110,7 +181,9 @@ class DocumentService
     {
         DocumentDownloaded::dispatch($file->document, $organization, $actor);
 
-        return Storage::disk($file->disk)->download($file->path, $file->filename);
+        return Storage::disk($file->disk)->response($file->path, $file->filename, [
+            'Content-Type' => $file->mime_type ?: 'application/octet-stream',
+        ]);
     }
 
     private function resolveStatus(?string $expirationDate): DocumentStatus

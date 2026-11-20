@@ -14,6 +14,7 @@ const props = defineProps<{
     processing?: boolean;
     reading?: boolean;
     readingProgress?: number;
+    readingLabel?: string;
     icon?: string;
     frame?: string;
     label?: string;
@@ -21,18 +22,32 @@ const props = defineProps<{
 
 const emit = defineEmits<{
     submit: [file: File];
+    skip: [];
 }>();
 
 const preview = ref<string | null>(null);
 const selected = ref<File | null>(null);
 const live = ref(false);
 const reviewing = ref(false);
+const placing = ref(false);
+const confirming = ref(false);
 const video = ref<HTMLVideoElement | null>(null);
 const guide = ref<HTMLElement | null>(null);
+const stage = ref<HTMLElement | null>(null);
+const placedImg = ref<HTMLImageElement | null>(null);
 const stream = ref<MediaStream | null>(null);
 const fileInput = ref<HTMLInputElement | null>(null);
 const cameraInput = ref<HTMLInputElement | null>(null);
 const error = ref('');
+const panX = ref(0);
+const panY = ref(0);
+const scale = ref(1);
+const rotation = ref(0);
+const naturalW = ref(0);
+const naturalH = ref(0);
+const pointers = new Map<number, { x: number; y: number }>();
+let pinchStartDistance = 0;
+let pinchStartScale = 1;
 
 const frameRatio = computed(() => FRAME_RATIOS[props.frame ?? 'id-card'] ?? FRAME_RATIOS['id-card']);
 const isPortrait = computed(() => frameRatio.value < 1);
@@ -42,6 +57,15 @@ const guideBoxStyle = computed(() => ({
     aspectRatio: String(frameRatio.value),
     width: isPortrait.value ? 'min(72vw, 18rem)' : 'min(88vw, 28rem)',
 }));
+
+const placedStyle = computed(() => ({
+    width: `${naturalW.value}px`,
+    height: `${naturalH.value}px`,
+    transform: `translate(-50%, -50%) translate(${panX.value}px, ${panY.value}px) rotate(${rotation.value}deg) scale(${scale.value})`,
+}));
+
+const minScale = computed(() => coverScale() * 0.6);
+const maxScale = computed(() => coverScale() * 6);
 
 const stopCamera = () => {
     stream.value?.getTracks().forEach((track) => track.stop());
@@ -57,6 +81,17 @@ const useFile = (file: File | null) => {
     preview.value = file ? URL.createObjectURL(file) : null;
 };
 
+const resetPlacement = () => {
+    panX.value = 0;
+    panY.value = 0;
+    scale.value = 1;
+    rotation.value = 0;
+    naturalW.value = 0;
+    naturalH.value = 0;
+    pointers.clear();
+    pinchStartDistance = 0;
+};
+
 const canvasToFile = (canvas: HTMLCanvasElement, name: string): Promise<File | null> =>
     new Promise((resolve) => {
         canvas.toBlob((blob) => {
@@ -64,34 +99,156 @@ const canvasToFile = (canvas: HTMLCanvasElement, name: string): Promise<File | n
         }, 'image/jpeg', 0.92);
     });
 
-const cropImageToFrame = async (file: File): Promise<File> => {
-    if (!file.type.startsWith('image/')) {
-        return file;
+const coverScale = () => {
+    const frame = guide.value;
+    const width = naturalW.value;
+    const height = naturalH.value;
+
+    if (!frame || width < 1 || height < 1) {
+        return 1;
     }
 
-    const bitmap = await createImageBitmap(file);
-    const ratio = frameRatio.value;
-    const sourceRatio = bitmap.width / bitmap.height;
-    let sx = 0;
-    let sy = 0;
-    let sw = bitmap.width;
-    let sh = bitmap.height;
+    const radians = (rotation.value * Math.PI) / 180;
+    const rotatedW = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+    const rotatedH = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians));
 
-    if (sourceRatio > ratio) {
-        sw = bitmap.height * ratio;
-        sx = (bitmap.width - sw) / 2;
-    } else if (sourceRatio < ratio) {
-        sh = bitmap.width / ratio;
-        sy = (bitmap.height - sh) / 2;
+    return Math.max(frame.clientWidth / rotatedW, frame.clientHeight / rotatedH);
+};
+
+const fitToFrame = async () => {
+    await nextTick();
+
+    if (!placedImg.value) {
+        return;
     }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(sw);
-    canvas.height = Math.round(sh);
-    canvas.getContext('2d')?.drawImage(bitmap, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
+    naturalW.value = placedImg.value.naturalWidth;
+    naturalH.value = placedImg.value.naturalHeight;
+    panX.value = 0;
+    panY.value = 0;
+    scale.value = coverScale() * 1.04;
+};
 
-    return (await canvasToFile(canvas, file.name.replace(/\.\w+$/, '.jpg'))) ?? file;
+const clampScale = (value: number) => Math.min(maxScale.value, Math.max(minScale.value, value));
+
+const rotateBy = async (degrees: number) => {
+    rotation.value = (rotation.value + degrees) % 360;
+
+    if (rotation.value < 0) {
+        rotation.value += 360;
+    }
+
+    panX.value = 0;
+    panY.value = 0;
+    await nextTick();
+    scale.value = coverScale() * 1.04;
+};
+
+const zoomBy = (factor: number) => {
+    scale.value = clampScale(scale.value * factor);
+};
+
+const pointerDistance = () => {
+    const points = [...pointers.values()];
+
+    if (points.length < 2) {
+        return 0;
+    }
+
+    return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+};
+
+const onPointerDown = (event: PointerEvent) => {
+    if (!placing.value) {
+        return;
+    }
+
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size === 2) {
+        pinchStartDistance = pointerDistance();
+        pinchStartScale = scale.value;
+    }
+};
+
+const onPointerMove = (event: PointerEvent) => {
+    if (!placing.value || !pointers.has(event.pointerId)) {
+        return;
+    }
+
+    const previous = pointers.get(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (!previous) {
+        return;
+    }
+
+    if (pointers.size === 1) {
+        panX.value += event.clientX - previous.x;
+        panY.value += event.clientY - previous.y;
+        return;
+    }
+
+    if (pointers.size === 2 && pinchStartDistance > 0) {
+        scale.value = clampScale(pinchStartScale * (pointerDistance() / pinchStartDistance));
+    }
+};
+
+const onPointerUp = (event: PointerEvent) => {
+    pointers.delete(event.pointerId);
+
+    if (pointers.size < 2) {
+        pinchStartDistance = 0;
+    }
+};
+
+const onWheel = (event: WheelEvent) => {
+    if (!placing.value) {
+        return;
+    }
+
+    event.preventDefault();
+    zoomBy(event.deltaY > 0 ? 0.92 : 1.08);
+};
+
+const cropPlacement = async (): Promise<File | null> => {
+    const image = placedImg.value;
+    const frame = guide.value;
+    const viewport = stage.value;
+
+    if (!image || !frame || !viewport || naturalW.value < 1) {
+        return selected.value;
+    }
+
+    const stageRect = viewport.getBoundingClientRect();
+    const guideRect = frame.getBoundingClientRect();
+    const pixelRatio = 2;
+    const scene = document.createElement('canvas');
+    scene.width = Math.max(1, Math.round(stageRect.width * pixelRatio));
+    scene.height = Math.max(1, Math.round(stageRect.height * pixelRatio));
+    const context = scene.getContext('2d');
+
+    if (!context) {
+        return selected.value;
+    }
+
+    context.scale(pixelRatio, pixelRatio);
+    context.translate(stageRect.width / 2 + panX.value, stageRect.height / 2 + panY.value);
+    context.rotate((rotation.value * Math.PI) / 180);
+    context.scale(scale.value, scale.value);
+    context.drawImage(image, -naturalW.value / 2, -naturalH.value / 2, naturalW.value, naturalH.value);
+
+    const cropX = (guideRect.left - stageRect.left) * pixelRatio;
+    const cropY = (guideRect.top - stageRect.top) * pixelRatio;
+    const cropW = Math.max(8, guideRect.width * pixelRatio);
+    const cropH = Math.max(8, guideRect.height * pixelRatio);
+    const output = document.createElement('canvas');
+    output.width = Math.round(cropW);
+    output.height = Math.round(cropH);
+    output.getContext('2d')?.drawImage(scene, cropX, cropY, cropW, cropH, 0, 0, output.width, output.height);
+
+    return canvasToFile(output, (selected.value?.name ?? 'documento.jpg').replace(/\.\w+$/, '.jpg'));
 };
 
 const onPick = async (event: Event) => {
@@ -102,17 +259,20 @@ const onPick = async (event: Event) => {
     if (!file) {
         useFile(null);
         reviewing.value = false;
+        placing.value = false;
         return;
     }
 
-    try {
-        useFile(await cropImageToFrame(file));
-    } catch {
-        useFile(file);
-    }
-
     stopCamera();
+    resetPlacement();
+    useFile(file);
+    placing.value = file.type.startsWith('image/');
     reviewing.value = true;
+    await nextTick();
+
+    if (placing.value) {
+        await fitToFrame();
+    }
 };
 
 const openAttach = () => fileInput.value?.click();
@@ -122,6 +282,7 @@ const openNativeCamera = () => cameraInput.value?.click();
 const startCamera = async () => {
     error.value = '';
     reviewing.value = false;
+    placing.value = false;
 
     if (!navigator.mediaDevices?.getUserMedia) {
         openNativeCamera();
@@ -154,15 +315,15 @@ const mapGuideToVideo = (videoEl: HTMLVideoElement, guideEl: HTMLElement) => {
     const guideRect = guideEl.getBoundingClientRect();
     const vw = videoEl.videoWidth || videoRect.width;
     const vh = videoEl.videoHeight || videoRect.height;
-    const scale = Math.max(videoRect.width / vw, videoRect.height / vh);
-    const shownW = vw * scale;
-    const shownH = vh * scale;
+    const videoScale = Math.max(videoRect.width / vw, videoRect.height / vh);
+    const shownW = vw * videoScale;
+    const shownH = vh * videoScale;
     const cropX = (shownW - videoRect.width) / 2;
     const cropY = (shownH - videoRect.height) / 2;
-    const sx = Math.max(0, ((guideRect.left - videoRect.left) + cropX) / scale);
-    const sy = Math.max(0, ((guideRect.top - videoRect.top) + cropY) / scale);
-    const sw = Math.min(vw - sx, guideRect.width / scale);
-    const sh = Math.min(vh - sy, guideRect.height / scale);
+    const sx = Math.max(0, ((guideRect.left - videoRect.left) + cropX) / videoScale);
+    const sy = Math.max(0, ((guideRect.top - videoRect.top) + cropY) / videoScale);
+    const sw = Math.min(vw - sx, guideRect.width / videoScale);
+    const sh = Math.min(vh - sy, guideRect.height / videoScale);
 
     return { sx, sy, sw, sh };
 };
@@ -190,16 +351,34 @@ const snap = async () => {
 
     useFile(file);
     stopCamera();
+    placing.value = false;
     reviewing.value = true;
 };
 
-const confirmPhoto = () => {
+const confirmPhoto = async () => {
+    if (placing.value) {
+        confirming.value = true;
+
+        try {
+            const cropped = await cropPlacement();
+
+            if (cropped) {
+                useFile(cropped);
+            }
+        } finally {
+            confirming.value = false;
+            placing.value = false;
+        }
+    }
+
     reviewing.value = false;
 };
 
 const retake = () => {
     useFile(null);
     reviewing.value = false;
+    placing.value = false;
+    resetPlacement();
     if (props.camera) {
         startCamera();
         return;
@@ -212,6 +391,8 @@ const closeModal = () => {
     if (reviewing.value) {
         useFile(null);
         reviewing.value = false;
+        placing.value = false;
+        resetPlacement();
     }
 };
 
@@ -266,15 +447,18 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="grid grid-cols-2 gap-2">
-            <button type="button" class="btn-primary" @click="startCamera">Tomar foto</button>
-            <button type="button" class="btn-ghost" @click="openAttach">Adjuntar archivo</button>
+            <button type="button" class="btn-primary" :disabled="reading || processing" @click="startCamera">Tomar foto</button>
+            <button type="button" class="btn-ghost" :disabled="reading || processing" @click="openAttach">Adjuntar archivo</button>
         </div>
 
         <p v-if="error" class="text-sm text-red-300">{{ error }}</p>
 
-        <p v-if="reading" class="rounded-xl border border-ember-400/30 bg-ember-500/10 px-3 py-2 text-sm text-ember-100">
-            Leyendo el texto de la foto… {{ readingProgress ?? 0 }}%
-        </p>
+        <div v-if="reading" class="rounded-xl border border-ember-400/30 bg-ember-500/10 px-3 py-2 text-sm text-ember-100">
+            <p>{{ readingLabel || 'Leyendo el documento…' }} {{ readingProgress ?? 0 }}%</p>
+            <button type="button" class="mt-1 text-xs text-cream/70 underline decoration-white/30" @click="emit('skip')">
+                Subir sin esperar la lectura
+            </button>
+        </div>
 
         <button
             type="button"
@@ -282,9 +466,7 @@ onBeforeUnmount(() => {
             :disabled="!selected || processing || modalOpen || reading"
             @click="submit"
         >
-            {{ reading
-                ? `Leyendo el documento… ${readingProgress ?? 0}%`
-                : analyze ? 'Analizar y continuar' : 'Adjuntar y continuar' }}
+            {{ reading ? 'Leyendo…' : processing ? 'Guardando…' : analyze ? 'Analizar y continuar' : 'Adjuntar y continuar' }}
         </button>
 
         <Teleport to="body">
@@ -302,7 +484,15 @@ onBeforeUnmount(() => {
                     <button type="button" class="btn-ghost" @click="closeModal">Cerrar</button>
                 </header>
 
-                <div class="relative min-h-0 flex-1">
+                <div
+                    ref="stage"
+                    class="relative min-h-0 flex-1 touch-none overflow-hidden"
+                    @pointerdown="onPointerDown"
+                    @pointermove="onPointerMove"
+                    @pointerup="onPointerUp"
+                    @pointercancel="onPointerUp"
+                    @wheel="onWheel"
+                >
                     <video
                         v-show="live"
                         ref="video"
@@ -311,8 +501,24 @@ onBeforeUnmount(() => {
                         playsinline
                         muted
                     />
+                    <img
+                        v-if="reviewing && preview && placing"
+                        ref="placedImg"
+                        :src="preview"
+                        alt="Foto capturada"
+                        class="absolute left-1/2 top-1/2 max-w-none origin-center select-none will-change-transform"
+                        draggable="false"
+                        :style="placedStyle"
+                        @load="fitToFrame"
+                    />
+                    <img
+                        v-else-if="reviewing && preview"
+                        :src="preview"
+                        alt="Foto capturada"
+                        class="absolute inset-0 h-full w-full object-contain p-4"
+                    />
                     <div
-                        v-if="live"
+                        v-if="live || placing"
                         class="pointer-events-none absolute inset-0 grid"
                         style="grid-template-rows: 1fr auto 1fr; grid-template-columns: 1fr auto 1fr;"
                     >
@@ -331,26 +537,30 @@ onBeforeUnmount(() => {
                         <div class="bg-black/55" />
                         <div class="col-span-3 bg-black/55" />
                     </div>
-                    <img
-                        v-if="reviewing && preview"
-                        :src="preview"
-                        alt="Foto capturada"
-                        class="absolute inset-0 h-full w-full object-contain p-4"
-                    />
                 </div>
 
                 <div class="relative z-20 shrink-0 bg-black/80 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
                     <p class="mb-3 text-center text-sm text-white/80">
-                        {{ reviewing ? 'Revisa que se vea completo y nítido.' : 'Encaja el documento en el recuadro naranja. Solo se guarda esa área.' }}
+                        {{ placing
+                            ? 'Arrastra la foto, gírala y acércala hasta encajarla en el recuadro naranja.'
+                            : reviewing ? 'Revisa que se vea completo y nítido.' : 'Encaja el documento en el recuadro naranja. Solo se guarda esa área.' }}
                     </p>
+                    <div v-if="placing" class="mb-3 grid grid-cols-4 gap-2">
+                        <button type="button" class="btn-ghost py-2 text-sm" @click="rotateBy(-90)">Girar izq.</button>
+                        <button type="button" class="btn-ghost py-2 text-sm" @click="rotateBy(90)">Girar der.</button>
+                        <button type="button" class="btn-ghost py-2 text-sm" @click="zoomBy(0.86)">Alejar</button>
+                        <button type="button" class="btn-ghost py-2 text-sm" @click="zoomBy(1.16)">Acercar</button>
+                    </div>
                     <div class="grid grid-cols-2 gap-3">
                         <template v-if="live">
                             <button type="button" class="btn-primary py-3 text-base" @click="snap">Tomar foto</button>
                             <button type="button" class="btn-ghost py-3 text-base" @click="closeModal">Cancelar</button>
                         </template>
                         <template v-else>
-                            <button type="button" class="btn-primary py-3 text-base" @click="confirmPhoto">Usar esta foto</button>
-                            <button type="button" class="btn-ghost py-3 text-base" @click="retake">Repetir</button>
+                            <button type="button" class="btn-primary py-3 text-base" :disabled="confirming" @click="confirmPhoto">
+                                {{ confirming ? 'Recortando…' : 'Usar esta foto' }}
+                            </button>
+                            <button type="button" class="btn-ghost py-3 text-base" :disabled="confirming" @click="retake">Repetir</button>
                         </template>
                     </div>
                 </div>

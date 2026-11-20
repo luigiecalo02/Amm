@@ -41,6 +41,13 @@ export interface CurrentRole {
     scope: 'platform' | 'organization';
 }
 
+export type AppNotification = {
+    id: string;
+    title: string;
+    body: string;
+    url: string;
+};
+
 export type PageProps = {
     auth: { user: AuthUser | null };
     organization: OrganizationSummary | null;
@@ -48,6 +55,8 @@ export type PageProps = {
     can_switch_clubs?: boolean;
     permissions: PermissionSlug[];
     googleEnabled?: boolean;
+    vapidPublicKey?: string | null;
+    notifications?: { unread_count: number; items: AppNotification[] };
     flash: { success?: string | null; error?: string | null; analyzed?: string | null };
 } & Record<string, unknown>;
 

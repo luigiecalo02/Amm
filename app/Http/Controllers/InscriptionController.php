@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\ApproveInscriptionAction;
+use App\Actions\DeleteOpenInscriptionAction;
 use App\Actions\GrantInscriptionAccessAction;
 use App\Actions\ReplaceInscriptionDocumentAction;
 use App\Actions\UpdatePendingInscriptionAction;
@@ -18,9 +20,13 @@ use App\Models\Role;
 use App\Services\Inscriptions\InscriptionDocumentCatalog;
 use App\Services\Inscriptions\InscriptionFormMapper;
 use App\Services\Inscriptions\InscriptionLinkService;
+use App\Services\People\MemberPhotoService;
+use App\Support\InscriptionDocumentSteps;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InscriptionController extends Controller
 {
@@ -28,8 +34,8 @@ class InscriptionController extends Controller
         private readonly InscriptionLinkService $links,
         private readonly InscriptionFormMapper $mapper,
         private readonly InscriptionDocumentCatalog $documentsCatalog,
-    ) {
-    }
+        private readonly MemberPhotoService $photos,
+    ) {}
 
     public function index(Organization $organization): Response
     {
@@ -49,8 +55,22 @@ class InscriptionController extends Controller
                 ->where('organization_id', $organization->id)
                 ->with('person')
                 ->latest()
-                ->limit(40)
-                ->get(),
+                ->limit(80)
+                ->get()
+                ->filter(fn (InscriptionApplication $application) => $application->hasStarted())
+                ->take(40)
+                ->values()
+                ->map(fn (InscriptionApplication $application) => [
+                    'id' => $application->id,
+                    'status' => $application->status->value,
+                    'reference' => $application->reference,
+                    'email' => $application->email ?? $application->form_draft['email'] ?? null,
+                    'submitted_at' => $application->submitted_at,
+                    'display_name' => $application->displayName(),
+                    'document_number' => $application->document_number ?? $application->person?->document_number,
+                    'can_delete' => $application->isOpen(),
+                    'person' => $application->person,
+                ]),
             'canCreate' => request()->user()?->hasPermission('inscriptions.create', $organization) ?? false,
             'canVerify' => request()->user()?->hasPermission('inscriptions.verify', $organization) ?? false,
         ]);
@@ -84,6 +104,21 @@ class InscriptionController extends Controller
         return back()->with('success', 'El enlace se eliminó. Nadie más puede inscribirse con él.');
     }
 
+    public function destroyApplication(
+        Organization $organization,
+        InscriptionApplication $application,
+        DeleteOpenInscriptionAction $delete,
+    ): RedirectResponse {
+        $this->authorizePermission($organization, 'inscriptions.verify');
+        abort_unless($application->organization_id === $organization->id, 404);
+
+        $delete->execute($application);
+
+        return redirect()
+            ->route('inscriptions.index', $organization)
+            ->with('success', 'La solicitud abierta se eliminó.');
+    }
+
     public function show(Organization $organization, InscriptionApplication $application): Response
     {
         $this->authorizePermission($organization, 'inscriptions.view');
@@ -102,17 +137,45 @@ class InscriptionController extends Controller
         $canVerify = request()->user()?->hasPermission('inscriptions.verify', $organization) ?? false;
         $canEdit = $canVerify && $application->isPendingReview();
 
+        if ($application->person) {
+            $this->photos->present($application->person, $organization);
+        }
+
         return Inertia::render('Inscriptions/Show', [
             'application' => $application,
-            'form' => $this->mapper->fromPerson($application->person, $application->form_draft ?? []),
+            'form' => $this->mapper->forApplication($application),
             'documents' => $this->documentsCatalog->forApplication(
                 $application,
                 fn (string $documentId, string $fileId) => route('documents.download', [$organization, $documentId, $fileId]),
+                fn (string $step) => route('inscriptions.scan', [$organization, $application, $step]),
             ),
             'pilots' => $this->links->pilots($organization),
             'roles' => Role::query()->forOrganization($organization->id)->orderBy('name')->get(['id', 'name', 'slug']),
             'canVerify' => $canVerify,
             'canEdit' => $canEdit,
+            'memberActive' => $application->person?->isActiveIn($organization->id) ?? false,
+            'canUpdateProfile' => $application->person
+                ? (request()->user()?->can('update', [$application->person, $organization]) ?? false)
+                : false,
+            'canUpdateMotorcycle' => request()->user()?->hasPermission('motorcycles.update', $organization) ?? false,
+        ]);
+    }
+
+    public function previewScan(
+        Organization $organization,
+        InscriptionApplication $application,
+        string $step,
+    ): StreamedResponse {
+        $this->authorizePermission($organization, 'inscriptions.view');
+        abort_unless($application->organization_id === $organization->id, 404);
+        abort_unless(in_array($step, InscriptionDocumentSteps::keys(), true), 404);
+
+        $upload = $application->uploads[$step] ?? null;
+        $path = is_array($upload) ? ($upload['path'] ?? null) : null;
+        abort_unless(is_string($path) && Storage::disk('scans')->exists($path), 404);
+
+        return Storage::disk('scans')->response($path, $upload['filename'] ?? $step, [
+            'Content-Type' => $upload['mime'] ?? 'application/octet-stream',
         ]);
     }
 
@@ -163,6 +226,21 @@ class InscriptionController extends Controller
         return back()->with('success', 'Documentación verificada. Ya puedes otorgar acceso al club.');
     }
 
+    public function approve(
+        Organization $organization,
+        InscriptionApplication $application,
+        ApproveInscriptionAction $approve,
+    ): RedirectResponse {
+        $this->authorizePermission($organization, 'inscriptions.verify');
+        abort_unless($application->organization_id === $organization->id, 404);
+        $actor = request()->user();
+        abort_unless($actor !== null, 403);
+
+        $approve->execute($application, $actor);
+
+        return back()->with('success', 'Solicitud aprobada. El integrante quedó activo y ya puedes actualizar su foto de perfil y la de la moto.');
+    }
+
     public function grantAccess(
         GrantInscriptionAccessRequest $request,
         Organization $organization,
@@ -187,5 +265,4 @@ class InscriptionController extends Controller
             'No tienes permiso para esta acción.'
         );
     }
-
 }

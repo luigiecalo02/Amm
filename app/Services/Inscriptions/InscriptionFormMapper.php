@@ -2,39 +2,48 @@
 
 namespace App\Services\Inscriptions;
 
+use App\Models\Document;
+use App\Models\InscriptionApplication;
 use App\Models\Person;
 
 final class InscriptionFormMapper
 {
     /**
      * @param  array<string, mixed>  $extracted
+     * @param  array<string, mixed>  $draft
      * @return array<string, mixed>
      */
     public function toForm(array $extracted, array $draft = []): array
     {
-        $line = $extracted['line'] ?? $extracted['model'] ?? $draft['motorcycle']['line'] ?? '';
+        $draftHealth = is_array($draft['health'] ?? null) ? $draft['health'] : [];
+        $draftContact = is_array($draft['emergency_contact'] ?? null) ? $draft['emergency_contact'] : [];
+        $draftMotorcycle = is_array($draft['motorcycle'] ?? null) ? $draft['motorcycle'] : [];
+        $line = $this->pick(
+            $extracted['line'] ?? $extracted['model'] ?? null,
+            $draftMotorcycle['line'] ?? $draftMotorcycle['model'] ?? null,
+        );
 
-        return [
-            'first_name' => $extracted['first_name'] ?? $draft['first_name'] ?? '',
-            'middle_name' => $extracted['middle_name'] ?? $draft['middle_name'] ?? '',
-            'last_name' => $extracted['last_name'] ?? $draft['last_name'] ?? '',
-            'second_last_name' => $extracted['second_last_name'] ?? $draft['second_last_name'] ?? '',
-            'document_type' => $extracted['document_type'] ?? $draft['document_type'] ?? 'cc',
-            'document_number' => $extracted['document_number'] ?? $draft['document_number'] ?? '',
-            'document_issued_in' => $extracted['document_issued_in'] ?? '',
-            'birth_date' => $extracted['birth_date'] ?? '',
-            'birth_city' => $extracted['birth_city'] ?? '',
-            'birth_department' => $extracted['birth_department'] ?? '',
-            'gender' => $extracted['gender'] ?? '',
-            'marital_status' => $extracted['marital_status'] ?? 'soltero',
-            'email' => $extracted['email'] ?? $draft['email'] ?? '',
-            'phone' => $extracted['phone'] ?? $draft['phone'] ?? '',
-            'address' => $extracted['address'] ?? $draft['address'] ?? '',
-            'neighborhood' => $extracted['neighborhood'] ?? $draft['neighborhood'] ?? '',
-            'city' => $extracted['city'] ?? $draft['city'] ?? '',
-            'department' => $extracted['department'] ?? $draft['department'] ?? '',
-            'vehicle_role' => $draft['vehicle_role'] ?? 'driver',
-            'pilot_person_id' => $draft['pilot_person_id'] ?? '',
+        $form = [
+            'first_name' => $this->pick($extracted['first_name'] ?? null, $draft['first_name'] ?? null),
+            'middle_name' => $this->pick($extracted['middle_name'] ?? null, $draft['middle_name'] ?? null),
+            'last_name' => $this->pick($extracted['last_name'] ?? null, $draft['last_name'] ?? null),
+            'second_last_name' => $this->pick($extracted['second_last_name'] ?? null, $draft['second_last_name'] ?? null),
+            'document_type' => $this->pick($extracted['document_type'] ?? null, $draft['document_type'] ?? null, 'cc'),
+            'document_number' => $this->pick($extracted['document_number'] ?? null, $draft['document_number'] ?? null),
+            'document_issued_in' => $this->pick($extracted['document_issued_in'] ?? null, $draft['document_issued_in'] ?? null),
+            'birth_date' => $this->pick($extracted['birth_date'] ?? null, $draft['birth_date'] ?? null),
+            'birth_city' => $this->pick($extracted['birth_city'] ?? null, $draft['birth_city'] ?? null),
+            'birth_department' => $this->pick($extracted['birth_department'] ?? null, $draft['birth_department'] ?? null),
+            'gender' => $this->pick($extracted['gender'] ?? null, $draft['gender'] ?? null),
+            'marital_status' => $this->pick($extracted['marital_status'] ?? null, $draft['marital_status'] ?? null, 'soltero'),
+            'email' => $this->pick($extracted['email'] ?? null, $draft['email'] ?? null),
+            'phone' => $this->pick($extracted['phone'] ?? null, $draft['phone'] ?? null),
+            'address' => $this->pick($extracted['address'] ?? null, $draft['address'] ?? null),
+            'neighborhood' => $this->pick($extracted['neighborhood'] ?? null, $draft['neighborhood'] ?? null),
+            'city' => $this->pick($extracted['city'] ?? null, $draft['city'] ?? null),
+            'department' => $this->pick($extracted['department'] ?? null, $draft['department'] ?? null),
+            'vehicle_role' => $this->pick($draft['vehicle_role'] ?? null, null, 'driver'),
+            'pilot_person_id' => $this->pick($draft['pilot_person_id'] ?? null, null),
             'metadata' => [
                 'church_name' => $draft['metadata']['church_name'] ?? '',
                 'church_district' => $draft['metadata']['church_district'] ?? '',
@@ -43,40 +52,111 @@ final class InscriptionFormMapper
                 'baptized_at' => $draft['metadata']['baptized_at'] ?? '',
             ],
             'health' => [
-                'eps' => '',
-                'blood_type' => $extracted['blood_type'] ?? '',
-                'rh' => $extracted['rh'] ?? '',
-                'weight_kg' => '',
-                'height_cm' => $extracted['height_cm'] ?? '',
-                'special_treatment' => '',
-                'medications' => '',
-                'allergies' => '',
+                'eps' => $this->pick(null, $draftHealth['eps'] ?? null),
+                'blood_type' => $this->pick($extracted['blood_type'] ?? null, $draftHealth['blood_type'] ?? null),
+                'rh' => $this->pick($extracted['rh'] ?? null, $draftHealth['rh'] ?? null),
+                'weight_kg' => $this->pick(null, $draftHealth['weight_kg'] ?? null),
+                'height_cm' => $this->pick($extracted['height_cm'] ?? null, $draftHealth['height_cm'] ?? null),
+                'special_treatment' => $this->pick(null, $draftHealth['special_treatment'] ?? null),
+                'medications' => $this->pick(null, $draftHealth['medications'] ?? null),
+                'allergies' => $this->pick(null, $draftHealth['allergies'] ?? null),
             ],
             'emergency_contact' => [
-                'name' => '',
-                'phone' => '',
-                'address' => '',
-                'relationship' => '',
+                'name' => $this->pick(null, $draftContact['name'] ?? null),
+                'phone' => $this->pick(null, $draftContact['phone'] ?? null),
+                'address' => $this->pick(null, $draftContact['address'] ?? null),
+                'relationship' => $this->pick(null, $draftContact['relationship'] ?? null),
             ],
             'motorcycle' => [
-                'vehicle_type' => 'motorcycle',
-                'brand' => $extracted['brand'] ?? '',
+                'vehicle_type' => $this->pick(null, $draftMotorcycle['vehicle_type'] ?? null, 'motorcycle'),
+                'brand' => $this->pick($extracted['brand'] ?? null, $draftMotorcycle['brand'] ?? null),
                 'line' => $line,
-                'model' => $line,
-                'year' => $extracted['year'] ?? '',
-                'color' => $extracted['color'] ?? '',
-                'engine_displacement' => $extracted['engine_displacement'] ?? '',
-                'plate' => $extracted['plate'] ?? '',
-                'owner_name' => $extracted['owner_name'] ?? '',
-                'owner_document_number' => $extracted['owner_document_number'] ?? '',
+                'model' => $this->pick($line, $draftMotorcycle['model'] ?? null),
+                'year' => $this->pick($extracted['year'] ?? null, $draftMotorcycle['year'] ?? null),
+                'color' => $this->pick($extracted['color'] ?? null, $draftMotorcycle['color'] ?? null),
+                'engine_displacement' => $this->pick($extracted['engine_displacement'] ?? null, $draftMotorcycle['engine_displacement'] ?? null),
+                'plate' => $this->pick($extracted['plate'] ?? null, $draftMotorcycle['plate'] ?? null),
+                'owner_name' => $this->pick($extracted['owner_name'] ?? null, $draftMotorcycle['owner_name'] ?? null),
+                'owner_document_number' => $this->pick($extracted['owner_document_number'] ?? null, $draftMotorcycle['owner_document_number'] ?? null),
             ],
-            'license_document_number' => $extracted['license_document_number'] ?? '',
-            'license_categories' => $extracted['license_categories'] ?? [],
-            'license_expiration' => $extracted['license_expiration'] ?? '',
-            'soat_expiration' => $extracted['soat_expiration'] ?? '',
-            'tecnomecanica_expiration' => $extracted['tecnomecanica_expiration'] ?? '',
+            'license_document_number' => $this->pick($extracted['license_document_number'] ?? null, $draft['license_document_number'] ?? null),
+            'license_categories' => $this->pick($extracted['license_categories'] ?? null, $draft['license_categories'] ?? null, []),
+            'license_expiration' => $this->pick($extracted['license_expiration'] ?? null, $draft['license_expiration'] ?? null),
+            'soat_expiration' => $this->pick($extracted['soat_expiration'] ?? null, $draft['soat_expiration'] ?? null),
+            'tecnomecanica_expiration' => $this->pick($extracted['tecnomecanica_expiration'] ?? null, $draft['tecnomecanica_expiration'] ?? null),
             'registered' => is_array($draft['registered'] ?? null) ? $draft['registered'] : null,
+            'kept' => is_array($draft['kept'] ?? null) ? $draft['kept'] : null,
         ];
+
+        return $this->applyKept($form);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function forApplication(InscriptionApplication $application): array
+    {
+        $form = $this->toForm($application->extracted_data ?? [], $application->form_draft ?? []);
+
+        if ($application->person === null) {
+            return $form;
+        }
+
+        return $this->fromPerson($application->person, $form);
+    }
+
+    /**
+     * @param  array<string, mixed>  $form
+     * @return array<string, mixed>
+     */
+    public function applyKept(array $form): array
+    {
+        $kept = $form['kept'] ?? null;
+
+        if (! is_array($kept)) {
+            return $form;
+        }
+
+        foreach ($kept as $choice) {
+            if (! is_array($choice) || ! is_string($choice['value'] ?? null) || $choice['value'] === '') {
+                continue;
+            }
+
+            foreach ($choice['paths'] ?? [] as $path) {
+                if (is_string($path) && $path !== '') {
+                    $form = $this->writePath($form, $path, $choice['value']);
+                }
+            }
+        }
+
+        return $form;
+    }
+
+    /**
+     * @param  array<string, mixed>  $form
+     * @return array<string, mixed>
+     */
+    private function writePath(array $form, string $path, string $value): array
+    {
+        $segments = explode('.', $path);
+        $cursor = &$form;
+
+        foreach ($segments as $index => $segment) {
+            if ($index === count($segments) - 1) {
+                $cursor[$segment] = $value;
+                break;
+            }
+
+            if (! isset($cursor[$segment]) || ! is_array($cursor[$segment])) {
+                $cursor[$segment] = [];
+            }
+
+            $cursor = &$cursor[$segment];
+        }
+
+        unset($cursor);
+
+        return $form;
     }
 
     /**
@@ -89,6 +169,14 @@ final class InscriptionFormMapper
             return $this->toForm([], $draft);
         }
 
+        $person->loadMissing([
+            'memberships',
+            'healthProfile',
+            'emergencyContacts',
+            'motorcycles.documents.type',
+            'documents.type',
+        ]);
+
         $membership = $person->memberships->first();
         $health = $person->healthProfile;
         $contact = $person->emergencyContacts->first();
@@ -96,7 +184,7 @@ final class InscriptionFormMapper
         $meta = $membership?->metadata ?? [];
         $value = static fn (mixed $item) => $item ?? '';
 
-        return [
+        return $this->overlayDocumentDates($person, [
             'first_name' => $value($person->first_name),
             'middle_name' => $value($person->middle_name),
             'last_name' => $value($person->last_name),
@@ -157,7 +245,52 @@ final class InscriptionFormMapper
             'license_expiration' => $draft['license_expiration'] ?? '',
             'soat_expiration' => $draft['soat_expiration'] ?? '',
             'tecnomecanica_expiration' => $draft['tecnomecanica_expiration'] ?? '',
-        ];
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $form
+     * @return array<string, mixed>
+     */
+    private function overlayDocumentDates(Person $person, array $form): array
+    {
+        $license = $this->documentBySlug($person, 'licencia');
+        $soat = $this->documentBySlug($person, 'soat');
+        $tecnomecanica = $this->documentBySlug($person, 'tecnomecanica');
+
+        if ($license) {
+            $form['license_document_number'] = $this->pick(
+                $form['license_document_number'] ?? null,
+                $license->document_number,
+            );
+            $form['license_expiration'] = $this->pick(
+                $form['license_expiration'] ?? null,
+                $license->expiration_date?->toDateString(),
+            );
+        }
+
+        if ($soat) {
+            $form['soat_expiration'] = $this->pick(
+                $form['soat_expiration'] ?? null,
+                $soat->expiration_date?->toDateString(),
+            );
+        }
+
+        if ($tecnomecanica) {
+            $form['tecnomecanica_expiration'] = $this->pick(
+                $form['tecnomecanica_expiration'] ?? null,
+                $tecnomecanica->expiration_date?->toDateString(),
+            );
+        }
+
+        return $form;
+    }
+
+    private function documentBySlug(Person $person, string $slug): ?Document
+    {
+        return $person->documents
+            ->concat($person->motorcycles->flatMap->documents)
+            ->first(fn (Document $document): bool => $document->type?->slug === $slug);
     }
 
     /**
@@ -203,5 +336,27 @@ final class InscriptionFormMapper
             && filled($draft['last_name'] ?? null)
             && filled($draft['document_number'] ?? null)
             && in_array($draft['vehicle_role'] ?? null, ['driver', 'passenger'], true);
+    }
+
+    private function pick(mixed $extracted, mixed $draft, mixed $default = ''): mixed
+    {
+        if ($this->hasValue($extracted)) {
+            return $extracted;
+        }
+
+        if ($this->hasValue($draft)) {
+            return $draft;
+        }
+
+        return $default;
+    }
+
+    private function hasValue(mixed $value): bool
+    {
+        if (is_array($value)) {
+            return $value !== [];
+        }
+
+        return $value !== null && $value !== '';
     }
 }

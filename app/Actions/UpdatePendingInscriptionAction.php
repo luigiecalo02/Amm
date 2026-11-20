@@ -8,9 +8,7 @@ use App\Models\Person;
 
 class UpdatePendingInscriptionAction
 {
-    public function __construct(private readonly UpdatePersonAction $people)
-    {
-    }
+    public function __construct(private readonly UpdatePersonAction $people) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -22,8 +20,11 @@ class UpdatePendingInscriptionAction
 
         $person = $this->people->execute($application->person()->firstOrFail(), $organization, $data);
 
+        $digits = preg_replace('/\D+/', '', (string) ($data['document_number'] ?? '')) ?? '';
+
         $application->forceFill([
             'email' => $data['email'] ?? $application->email,
+            'document_number' => $digits !== '' ? $digits : $application->document_number,
             'form_draft' => [
                 ...($application->form_draft ?? []),
                 ...$data,

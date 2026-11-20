@@ -13,6 +13,7 @@ const props = defineProps<{
         document_type: string;
         document_number: string;
         first_name: string;
+        middle_name?: string;
         last_name: string;
         second_last_name?: string;
         vehicle_role: string;
@@ -23,6 +24,7 @@ const form = useForm({
     document_type: props.form.document_type || 'cc',
     document_number: props.form.document_number || '',
     first_name: props.form.first_name || '',
+    middle_name: props.form.middle_name || '',
     last_name: props.form.last_name || '',
     second_last_name: props.form.second_last_name || '',
     vehicle_role: props.form.vehicle_role || '',
@@ -53,9 +55,13 @@ const submit = () => form.post(`/i/${props.token}/datos`);
                 </FormField>
                 <FormField label="Número de documento">
                     <input v-model="form.document_number" class="field" required />
+                    <p v-if="form.errors.document_number" class="mt-1 text-sm text-red-300">{{ form.errors.document_number }}</p>
                 </FormField>
-                <FormField label="Nombres">
+                <FormField label="Nombre">
                     <input v-model="form.first_name" class="field" required />
+                </FormField>
+                <FormField label="Segundo nombre">
+                    <input v-model="form.middle_name" class="field" />
                 </FormField>
                 <FormField label="Primer apellido">
                     <input v-model="form.last_name" class="field" required />
