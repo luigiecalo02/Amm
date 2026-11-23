@@ -71,10 +71,7 @@ const profileSlot = computed(() => ({
 </script>
 
 <template>
-    <p v-if="!memberActive" class="text-sm text-cream/60">
-        Aprueba la solicitud para activar al integrante. Después podrás actualizar su foto de perfil y la de la moto.
-    </p>
-    <p v-else-if="errors.status" class="text-sm text-red-300">{{ errors.status }}</p>
+    <p v-if="memberActive && errors.status" class="text-sm text-red-300">{{ errors.status }}</p>
 
     <div class="space-y-4">
         <div

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import NotificationBell from '@/components/NotificationBell.vue';
 import { usePermissions } from '@/composables/usePermissions';
@@ -29,11 +29,47 @@ const items = computed(() => {
         { href: `/app/${slug.value}/settings`, label: 'Ajustes', show: can('organization.view'), key: 'settings' },
     ].filter((item) => item.show);
 });
+
+const menuOpen = ref(false);
+const mobileShortcuts = computed(() => {
+    const visible = items.value;
+
+    if (visible.length <= 4) {
+        return visible;
+    }
+
+    const companions = visible.find((item) => item.href.endsWith('/people'));
+    const club = visible.find((item) => item.href === `/app/${slug.value}`);
+    const profile = visible.find((item) => item.href.endsWith('/perfil'));
+    const documents = visible.find((item) => item.href.endsWith('/mis-documentos'));
+
+    return [profile, documents, companions ?? club].filter((item) => item !== undefined);
+});
+const showMenuButton = computed(() => items.value.length > 3);
+const mobileColumns = computed(() => {
+    const count = showMenuButton.value ? 4 : Math.min(Math.max(items.value.length, 1), 4);
+
+    return ['grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][count - 1];
+});
+
+const isCurrent = (href: string) => {
+    const clubHome = `/app/${slug.value}`;
+
+    if (href === clubHome) {
+        return page.url === href || page.url === `${href}/`;
+    }
+
+    return page.url === href || page.url.startsWith(`${href}/`);
+};
+
+watch(() => page.url, () => {
+    menuOpen.value = false;
+});
 </script>
 
 <template>
     <div class="min-h-screen bg-[radial-gradient(circle_at_top,_#1A2332,_#0B0F14_55%)]">
-        <header class="sticky top-0 z-20 border-b border-white/10 bg-ink-900/80 backdrop-blur">
+        <header class="app-header sticky top-0 z-20 border-b border-white/10 bg-ink-900/80 backdrop-blur">
             <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
                 <div>
                     <p class="font-display text-xs uppercase tracking-[0.25em] text-ember-400">
@@ -60,7 +96,7 @@ const items = computed(() => {
                         :key="item.key || item.href"
                         :href="item.href"
                         class="block rounded-xl px-3 py-2 text-sm text-cream/70 hover:bg-white/5 hover:text-cream"
-                        :class="{ 'bg-ember-500/15 text-ember-400': page.url === item.href || page.url.startsWith(item.href + '/') && item.href !== `/app/${organization?.slug}` }"
+                        :class="{ 'bg-ember-500/15 text-ember-400': isCurrent(item.href) }"
                     >
                         {{ item.label }}
                     </Link>
@@ -78,15 +114,47 @@ const items = computed(() => {
             </main>
         </div>
 
-        <nav class="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 gap-1 border-t border-white/10 bg-ink-900/95 p-2 md:hidden">
+        <nav
+            class="fixed inset-x-0 bottom-0 z-20 grid items-stretch gap-1 border-t border-white/10 bg-ink-900/95 p-2 md:hidden"
+            :class="mobileColumns"
+        >
+            <button
+                v-if="showMenuButton"
+                type="button"
+                class="flex h-11 items-center justify-center rounded-xl px-1 text-center text-[11px] leading-tight text-cream/70"
+                :class="{ 'bg-ember-500/15 text-ember-300': menuOpen }"
+                @click="menuOpen = !menuOpen"
+            >
+                Menú
+            </button>
             <Link
-                v-for="item in items.slice(0, 4)"
+                v-for="item in mobileShortcuts"
                 :key="item.href"
                 :href="item.href"
-                class="rounded-xl px-2 py-2 text-center text-[11px] text-cream/70"
+                class="flex h-11 items-center justify-center rounded-xl px-1 text-center text-[11px] leading-tight text-cream/70"
+                :class="{ 'bg-ember-500/15 text-ember-300': isCurrent(item.href) }"
             >
                 {{ item.label }}
             </Link>
         </nav>
+
+        <div v-if="menuOpen" class="fixed inset-0 z-30 md:hidden">
+            <button type="button" class="absolute inset-0 bg-black/70" aria-label="Cerrar menú" @click="menuOpen = false" />
+            <nav class="absolute inset-x-0 bottom-0 max-h-[80dvh] overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-4 pb-8">
+                <div class="mb-3 flex items-center justify-between">
+                    <p class="font-display text-lg">Menú</p>
+                    <button type="button" class="btn-ghost" @click="menuOpen = false">Cerrar</button>
+                </div>
+                <div v-for="item in items" :key="`mobile-${item.key || item.href}`" @click="menuOpen = false">
+                    <Link
+                        :href="item.href"
+                        class="block rounded-xl px-3 py-3 text-sm text-cream/80 hover:bg-white/5"
+                        :class="{ 'bg-ember-500/15 text-ember-300': isCurrent(item.href) }"
+                    >
+                        {{ item.label }}
+                    </Link>
+                </div>
+            </nav>
+        </div>
     </div>
 </template>

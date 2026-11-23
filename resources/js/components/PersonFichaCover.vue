@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MemberAvatar from '@/components/MemberAvatar.vue';
 import MemberPhotos from '@/components/MemberPhotos.vue';
+import { useShrinkToFit } from '@/composables/useShrinkToFit';
 import { Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 
@@ -18,6 +19,10 @@ const props = withDefaults(defineProps<{
 
 const hasMotorcycle = computed(() => (props.person.motorcycles ?? []).length > 0);
 const photoInput = ref<HTMLInputElement | null>(null);
+const nameHeading = ref<HTMLElement | null>(null);
+const fullName = computed(() => [props.person.first_name, props.person.last_name, props.person.second_last_name].filter(Boolean).join(' '));
+
+useShrinkToFit(nameHeading, fullName);
 
 const pickProfilePhoto = (saveProfile: (file: File) => void, event: Event) => {
     const input = event.target as HTMLInputElement;
@@ -51,17 +56,17 @@ const pickProfilePhoto = (saveProfile: (file: File) => void, event: Event) => {
                     class="flex items-center gap-3"
                     :class="hasMotorcycle ? 'translate-y-1/2' : 'justify-between'"
                 >
-                    <span class="relative h-24 w-24 shrink-0">
+                    <span class="relative h-16 w-16 shrink-0 md:h-24 md:w-24">
                         <MemberAvatar
                             :src="person.photo_url"
                             :alt="`${person.first_name} ${person.last_name}`"
-                            class="h-24 w-24 shadow-[0_0_0_4px_#0B0F14]"
+                            class="h-16 w-16 shadow-[0_0_0_4px_#0B0F14] md:h-24 md:w-24"
                             :class="{ 'opacity-60': processing }"
                         />
                         <button
                             v-if="canEditProfile"
                             type="button"
-                            class="absolute -bottom-0.5 -right-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-ember-500 text-ink-950 shadow ring-2 ring-[#0B0F14] hover:bg-ember-400"
+                            class="absolute -bottom-0.5 -right-0.5 flex h-7 w-7 items-center justify-center rounded-full bg-ember-500 text-ink-950 shadow ring-2 ring-[#0B0F14] hover:bg-ember-400 md:h-8 md:w-8"
                             :disabled="processing"
                             :aria-label="processing ? 'Guardando foto…' : 'Actualizar foto de perfil'"
                             title="Actualizar foto"
@@ -83,8 +88,8 @@ const pickProfilePhoto = (saveProfile: (file: File) => void, event: Event) => {
                     <div class="flex min-w-0 items-center gap-2.5">
                         <div class="min-w-0 leading-none">
                             <p class="text-[11px] font-medium uppercase tracking-[0.18em] text-ember-400">{{ kicker }}</p>
-                            <h1 class="mt-0.5 font-display text-[1.85rem] leading-none text-cream drop-shadow-[0_1px_8px_rgba(0,0,0,0.65)]">
-                                {{ person.first_name }} {{ person.last_name }} {{ person.second_last_name }}
+                            <h1 ref="nameHeading" class="mt-0.5 font-display text-[1.85rem] leading-none text-cream drop-shadow-[0_1px_8px_rgba(0,0,0,0.65)]">
+                                {{ fullName }}
                             </h1>
                             <p class="mt-1 text-sm leading-none text-cream/50 drop-shadow-[0_1px_8px_rgba(0,0,0,0.65)]">
                                 {{ person.document_type?.toUpperCase() }} {{ person.document_number }}

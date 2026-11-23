@@ -13,6 +13,17 @@
 }
 
 @layer components {
+    .app-header {
+        padding-top: 0;
+    }
+
+    @media (max-width: 767px) and (display-mode: standalone),
+        (max-width: 767px) and (display-mode: fullscreen) {
+        .app-header {
+            padding-top: max(env(safe-area-inset-top), 2.75rem);
+        }
+    }
+
     .panel {
         @apply rounded-2xl border border-white/10 bg-ink-800/80 shadow-panel backdrop-blur;
     }
